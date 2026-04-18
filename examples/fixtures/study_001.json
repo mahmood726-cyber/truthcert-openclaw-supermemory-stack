@@ -1,0 +1,38 @@
+{
+  "study_id": "study_001",
+  "title": "Effects of Intervention X on Outcome Y: A Randomized Controlled Trial",
+  "authors": ["Smith, J.", "Doe, A.", "Brown, K."],
+  "year": 2023,
+  "journal": "Journal of Example Studies",
+  "doi": "10.1234/example.2023.001",
+  "open_access": true,
+  "design": "RCT",
+  "population": {
+    "description": "Adults aged 18-65 with condition Z",
+    "n_total": 150,
+    "n_intervention": 75,
+    "n_control": 75
+  },
+  "intervention": {
+    "name": "Intervention X",
+    "duration_weeks": 12
+  },
+  "outcomes": {
+    "primary": {
+      "name": "Outcome Y score",
+      "measure": "standardized scale",
+      "timepoint": "12 weeks"
+    }
+  },
+  "results": {
+    "effect_size": {
+      "type": "Cohen's d",
+      "value": 0.45,
+      "ci_lower": 0.25,
+      "ci_upper": 0.65,
+      "ci_level": 0.95
+    },
+    "p_value": 0.002
+  },
+  "content_hash": "sha256:a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd"
+}

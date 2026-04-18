@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://truthcert.io/schemas/policy.v1.json",
+  "title": "Policy",
+  "description": "Certification policy defining validation requirements",
+  "type": "object",
+  "required": ["policy_id", "profile", "validators"],
+  "properties": {
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["BRONZE", "SILVER", "GOLD"]
+    },
+    "description": {
+      "type": "string"
+    },
+    "validators": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ValidatorConfig"
+      }
+    },
+    "require_determinism": {
+      "type": "boolean",
+      "default": false
+    },
+    "require_multi_witness": {
+      "type": "boolean",
+      "default": false
+    },
+    "witness_count": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "max_claims": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 10000
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "ValidatorConfig": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["INFO", "WARN", "BLOCK"],
+          "default": "BLOCK"
+        },
+        "params": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

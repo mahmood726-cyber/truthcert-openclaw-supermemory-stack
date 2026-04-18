@@ -1,0 +1,30 @@
+# Memory Profile: LITE
+# Basic memory with limited capture - good for short sessions
+
+name: "lite"
+
+# Core settings
+autoRecall: true
+autoCapture: true
+
+# Limits
+maxRecallResults: 5
+maxInjectChars: 2000
+profileFrequency: 10  # Every 10 turns
+
+# Capture settings
+captureMode: "selected"
+captureTools:
+  - "tc_certify"
+  - "tc_verify"
+skipTools:
+  - "read_file"
+  - "exec_shell"
+
+# Privacy settings
+redactBeforeStore: true
+storeToolResults: true
+storeToolInputs: false
+
+# Backend settings
+allowRemoteBackend: false

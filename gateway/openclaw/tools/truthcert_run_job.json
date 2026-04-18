@@ -1,0 +1,89 @@
+{
+  "name": "truthcert_run_job",
+  "description": "Submit a certification job to TruthCert. Claims will be validated and either certified (PASS) or rejected (REJECT).",
+  "parameters": {
+    "type": "object",
+    "required": ["claims", "policy_id"],
+    "properties": {
+      "claims": {
+        "type": "array",
+        "description": "Array of numeric claims to certify",
+        "items": {
+          "type": "object",
+          "required": ["claim_id", "claim_type", "value", "evidence"],
+          "properties": {
+            "claim_id": {
+              "type": "string",
+              "description": "Unique identifier for this claim"
+            },
+            "claim_type": {
+              "type": "string",
+              "enum": ["effect_size", "heterogeneity", "sample_size", "p_value", "confidence_interval", "count", "proportion", "custom"]
+            },
+            "value": {
+              "type": "number",
+              "description": "The numeric value being claimed"
+            },
+            "unit": {
+              "type": "string",
+              "description": "Unit of measurement"
+            },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "description": "Evidence supporting the claim. MUST NOT reference memory.",
+              "items": {
+                "type": "object",
+                "required": ["source_type", "uri", "content_hash"],
+                "properties": {
+                  "source_type": {
+                    "type": "string",
+                    "enum": ["oa_document", "fixture", "computed"]
+                  },
+                  "uri": {
+                    "type": "string",
+                    "description": "URI to evidence source. Must NOT start with memory:"
+                  },
+                  "content_hash": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "policy_id": {
+        "type": "string",
+        "enum": ["bronze", "silver", "gold"],
+        "description": "Certification policy to use"
+      },
+      "metadata": {
+        "type": "object",
+        "description": "Optional metadata"
+      }
+    }
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "bundle_id": {
+        "type": "string",
+        "description": "Content-addressed bundle identifier"
+      },
+      "outcome": {
+        "type": "string",
+        "enum": ["PASS", "REJECT"]
+      },
+      "errors": {
+        "type": "array",
+        "items": {"type": "string"}
+      }
+    }
+  },
+  "safety": {
+    "deny_if_evidence_contains": ["memory:", "recall:", "remembered:"],
+    "fail_closed": true
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "truthcert_memory_remember",
+  "description": "Store information in memory for future reference. Sensitive content is automatically redacted.",
+  "parameters": {
+    "type": "object",
+    "required": ["text"],
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "Text content to remember",
+        "maxLength": 10000
+      },
+      "type": {
+        "type": "string",
+        "enum": ["note", "decision", "runbook"],
+        "default": "note",
+        "description": "Type of memory item"
+      },
+      "tags": {
+        "type": "array",
+        "items": {"type": "string"},
+        "maxItems": 10,
+        "description": "Tags for categorization"
+      }
+    }
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Memory item ID"
+      },
+      "redacted": {
+        "type": "boolean",
+        "description": "Whether content was redacted"
+      }
+    }
+  },
+  "safety": {
+    "redact_before_store": true,
+    "max_size_bytes": 50000
+  }
+}

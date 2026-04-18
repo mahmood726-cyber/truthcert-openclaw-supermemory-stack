@@ -1,0 +1,75 @@
+{
+  "policy_id": "silver",
+  "profile": "SILVER",
+  "description": "Standard validation for research use. Two witnesses, security and statistical validators.",
+  "validators": [
+    {
+      "name": "schema",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "scope_lock",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "memory_leak",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "check_uri": true,
+        "decode_base64": true
+      }
+    },
+    {
+      "name": "evidence_allowlist",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "strict_domains": false
+      }
+    },
+    {
+      "name": "idn_homograph",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "strict_mode": true
+      }
+    },
+    {
+      "name": "no_naked_numbers",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "qwed",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {
+        "tolerance": 0.01,
+        "strict_mode": true
+      }
+    },
+    {
+      "name": "effect_size_plausibility",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "heterogeneity",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    }
+  ],
+  "require_determinism": true,
+  "require_multi_witness": true,
+  "witness_count": 2,
+  "max_claims": 5000
+}

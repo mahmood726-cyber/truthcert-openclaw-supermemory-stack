@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  truthcert:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - TRUTHCERT_SIGNING_KEY=${TRUTHCERT_SIGNING_KEY}
+      - TRUTHCERT_PUBLIC_KEY=${TRUTHCERT_PUBLIC_KEY:-}
+      - TRUTHCERT_HOST=0.0.0.0
+      - TRUTHCERT_PORT=8000
+      - TRUTHCERT_LOG_LEVEL=${TRUTHCERT_LOG_LEVEL:-INFO}
+      - TRUTHCERT_BUNDLE_DIR=/app/bundles
+      - TRUTHCERT_EVIDENCE_CACHE=/app/evidence_cache
+      - TRUTHCERT_MEMORY_DB=/app/data/memory.db
+      - TRUTHCERT_LOG_DIR=/app/logs
+    volumes:
+      - bundles:/app/bundles
+      - evidence_cache:/app/evidence_cache
+      - memory_data:/app/data
+      - logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # Optional: Redis for caching (not required for core functionality)
+  # redis:
+  #   image: redis:7-alpine
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: unless-stopped
+
+volumes:
+  bundles:
+    driver: local
+  evidence_cache:
+    driver: local
+  memory_data:
+    driver: local
+  logs:
+    driver: local
+  # redis_data:
+  #   driver: local
+
+networks:
+  default:
+    name: truthcert-network

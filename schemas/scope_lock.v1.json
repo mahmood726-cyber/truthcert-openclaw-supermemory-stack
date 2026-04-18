@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://truthcert.io/schemas/scope_lock.v1.json",
+  "title": "ScopeLock",
+  "description": "Defines the scope and constraints for certification",
+  "type": "object",
+  "required": ["scope_id", "policy_id", "profile"],
+  "properties": {
+    "scope_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique identifier for this scope"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Policy used for certification"
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["BRONZE", "SILVER", "GOLD"],
+      "description": "Certification profile"
+    },
+    "allowed_sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Allowed evidence source types"
+    },
+    "required_validators": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Required validators for this scope"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

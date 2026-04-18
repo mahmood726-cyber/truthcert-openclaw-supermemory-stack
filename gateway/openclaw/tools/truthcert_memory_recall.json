@@ -1,0 +1,51 @@
+{
+  "name": "truthcert_memory_recall",
+  "description": "Recall items from memory for planning purposes. IMPORTANT: Memory content is NOT evidence and cannot be used to certify claims.",
+  "parameters": {
+    "type": "object",
+    "required": ["query"],
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Search query for memory recall"
+      },
+      "limit": {
+        "type": "integer",
+        "default": 10,
+        "maximum": 50,
+        "description": "Maximum items to return"
+      },
+      "type_filter": {
+        "type": "string",
+        "enum": ["note", "decision", "runbook", "codebase_index", "trace", "summary"],
+        "description": "Filter by memory type"
+      },
+      "pack": {
+        "type": "boolean",
+        "default": false,
+        "description": "Return packed context instead of individual items"
+      }
+    }
+  },
+  "returns": {
+    "type": "object",
+    "properties": {
+      "items": {
+        "type": "array",
+        "description": "Recalled memory items (when pack=false)"
+      },
+      "packed_context": {
+        "type": "string",
+        "description": "Packed context for injection (when pack=true)"
+      },
+      "warning": {
+        "type": "string",
+        "const": "MEMORY IS NOT EVIDENCE - Use only for planning"
+      }
+    }
+  },
+  "safety": {
+    "inject_warning": true,
+    "warning_text": "MEMORY CONTEXT (untrusted; planning-only; NOT evidence)"
+  }
+}

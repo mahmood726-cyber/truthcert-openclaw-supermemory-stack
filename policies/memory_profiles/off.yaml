@@ -1,0 +1,26 @@
+# Memory Profile: OFF
+# No memory capture or recall - minimal footprint
+
+name: "off"
+
+# Core settings
+autoRecall: false
+autoCapture: false
+
+# Limits
+maxRecallResults: 0
+maxInjectChars: 0
+profileFrequency: 0
+
+# Capture settings
+captureMode: "none"
+captureTools: []
+skipTools: []
+
+# Privacy settings
+redactBeforeStore: true
+storeToolResults: false
+storeToolInputs: false
+
+# Backend settings
+allowRemoteBackend: false

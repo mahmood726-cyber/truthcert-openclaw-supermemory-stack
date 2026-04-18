@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://truthcert.io/schemas/manifest.v1.json",
+  "title": "BundleManifest",
+  "description": "Manifest for a certification bundle",
+  "type": "object",
+  "required": ["bundle_id", "policy_id", "profile", "outcome", "scope_lock_hash", "claim_count", "validators", "validation_summary"],
+  "properties": {
+    "bundle_id": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Content-addressed bundle identifier"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "type": "string",
+      "enum": ["BRONZE", "SILVER", "GOLD"]
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["PASS", "REJECT"]
+    },
+    "scope_lock_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "claim_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "validators": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "validation_summary": {
+      "type": "object",
+      "required": ["results", "all_passed", "has_blocking"],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ValidatorResult"
+          }
+        },
+        "all_passed": {
+          "type": "boolean"
+        },
+        "has_blocking": {
+          "type": "boolean"
+        },
+        "has_warnings": {
+          "type": "boolean"
+        },
+        "blocking_count": {
+          "type": "integer"
+        },
+        "warning_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "model_metadata": {
+      "type": "object"
+    },
+    "tool_metadata": {
+      "type": "object"
+    },
+    "signature_metadata": {
+      "type": "object"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "string",
+      "const": "tc-bundle-v1"
+    }
+  },
+  "$defs": {
+    "ValidatorResult": {
+      "type": "object",
+      "required": ["validator_name", "passed", "severity", "message"],
+      "properties": {
+        "validator_name": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["INFO", "WARN", "BLOCK"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        },
+        "execution_time_ms": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

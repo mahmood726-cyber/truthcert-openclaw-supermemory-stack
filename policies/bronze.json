@@ -1,0 +1,46 @@
+{
+  "policy_id": "bronze",
+  "profile": "BRONZE",
+  "description": "Basic validation for quick checks. Single witness, essential validators only.",
+  "validators": [
+    {
+      "name": "schema",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "memory_leak",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "check_uri": true,
+        "check_provenance": true
+      }
+    },
+    {
+      "name": "no_naked_numbers",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "math_consistency",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "qwed",
+      "enabled": false,
+      "severity": "WARN",
+      "params": {
+        "strict_mode": false
+      }
+    }
+  ],
+  "require_determinism": false,
+  "require_multi_witness": false,
+  "witness_count": 1,
+  "max_claims": 1000
+}

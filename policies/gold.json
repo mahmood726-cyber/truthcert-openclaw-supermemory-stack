@@ -1,0 +1,108 @@
+{
+  "policy_id": "gold",
+  "profile": "GOLD",
+  "description": "Publication-quality validation. Three+ witnesses, full validator suite, PRISMA compliance.",
+  "validators": [
+    {
+      "name": "schema",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "scope_lock",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "memory_leak",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "check_uri": true,
+        "decode_base64": true,
+        "check_homoglyphs": true
+      }
+    },
+    {
+      "name": "evidence_allowlist",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "strict_domains": true
+      }
+    },
+    {
+      "name": "idn_homograph",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "strict_mode": true
+      }
+    },
+    {
+      "name": "no_naked_numbers",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "determinism",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "multi_witness",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "min_witnesses": 3
+      }
+    },
+    {
+      "name": "qwed",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {
+        "tolerance": 0.001,
+        "strict_mode": true
+      }
+    },
+    {
+      "name": "effect_size_plausibility",
+      "enabled": true,
+      "severity": "BLOCK",
+      "params": {}
+    },
+    {
+      "name": "heterogeneity",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "publication_bias",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "nma",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    },
+    {
+      "name": "prisma_2020",
+      "enabled": true,
+      "severity": "WARN",
+      "params": {}
+    }
+  ],
+  "require_determinism": true,
+  "require_multi_witness": true,
+  "witness_count": 3,
+  "max_claims": 10000
+}

@@ -1,0 +1,31 @@
+# Memory Profile: FULL
+# Full supermemory with comprehensive capture
+
+name: "full"
+
+# Core settings
+autoRecall: true
+autoCapture: true
+
+# Limits
+maxRecallResults: 10
+maxInjectChars: 4000
+profileFrequency: 5  # Every 5 turns
+
+# Capture settings
+captureMode: "all"
+captureTools: []  # Empty means all tools
+skipTools:
+  - "read_file"
+  - "read_email"
+  - "get_credentials"
+  - "ssh_exec"
+  - "exec_shell"
+
+# Privacy settings
+redactBeforeStore: true
+storeToolResults: true
+storeToolInputs: true
+
+# Backend settings
+allowRemoteBackend: false  # Default to local-first

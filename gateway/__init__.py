@@ -1,0 +1,3 @@
+"""
+Gateway - OpenClaw integration layer.
+"""
