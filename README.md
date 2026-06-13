@@ -7,7 +7,7 @@
 
 ## Overview
 
-This repository provides a complete reference implementation for:
+This repository provides a reference implementation for:
 
 - **TruthCert**: Fail-closed certification gate for numeric claims
 - **OpenClaw**: Runtime/control plane integration (placeholders)

@@ -541,6 +541,7 @@ class TestConnectionPooling:
 
         assert len(errors) == 0, f"Errors: {errors}"
         assert len(completed) == 20
+        store.close()
 
 
 class TestQWEDVerification:

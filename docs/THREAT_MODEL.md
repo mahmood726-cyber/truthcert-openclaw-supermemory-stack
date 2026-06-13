@@ -136,7 +136,7 @@ If any blocking validator fails, certification is rejected. No exceptions.
 
 ### 2. Memory is Never Evidence
 
-This is the core security boundary. Memory can inform planning but never proves claims.
+This is the core security boundary. Memory can inform planning but is never sufficient to establish claims.
 
 ### 3. Deny by Default
 

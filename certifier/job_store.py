@@ -413,6 +413,15 @@ class JobStore:
             """, (cutoff,))
             return cursor.rowcount
 
+    def close(self) -> None:
+        """Close all pooled connections.
+
+        Releases the underlying SQLite file handles. Required for clean
+        teardown on platforms (e.g. Windows) where an open handle prevents
+        the database file from being deleted.
+        """
+        self._pool.close_all()
+
     def _row_to_job(self, row: sqlite3.Row) -> Job:
         """Convert a database row to a Job."""
         return Job(
@@ -474,4 +483,9 @@ def reset_job_store() -> None:
     """
     global _job_store
     with _singleton_lock:
+        if _job_store is not None:
+            try:
+                _job_store.close()
+            except Exception:
+                pass
         _job_store = None

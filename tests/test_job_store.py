@@ -25,7 +25,11 @@ def temp_db_path():
 @pytest.fixture
 def job_store(temp_db_path):
     """Create a JobStore with temporary database."""
-    return JobStore(temp_db_path)
+    store = JobStore(temp_db_path)
+    try:
+        yield store
+    finally:
+        store.close()
 
 
 @pytest.fixture
@@ -223,6 +227,7 @@ class TestJobStorePersistence:
             metadata={"key": "value"},
         )
         store1.create(job)
+        store1.close()
 
         # Create new store instance (simulating restart)
         store2 = JobStore(temp_db_path)
@@ -231,6 +236,7 @@ class TestJobStorePersistence:
         assert retrieved is not None
         assert retrieved.status == JobStatus.COMPLETED
         assert retrieved.metadata == {"key": "value"}
+        store2.close()
 
     def test_wal_mode_enabled(self, temp_db_path):
         """Test that WAL mode is enabled for better concurrency."""
@@ -250,6 +256,7 @@ class TestJobStorePersistence:
         wal_path = Path(temp_db_path + "-wal")
         # Note: WAL file may not exist if no changes pending
         # Just verify no errors occur
+        store.close()
 
 
 class TestJobStoreThreadSafety:
