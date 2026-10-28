@@ -450,7 +450,10 @@ class LocalSQLiteBackend:
             # Rebuild FTS
             cursor.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')")
 
-            # Vacuum
-            cursor.execute("VACUUM")
+        # SQLite VACUUM cannot run inside the transaction opened by DELETE
+        # or the FTS5 rebuild. The context manager commits that work first;
+        # run VACUUM on a separate connection without a pending transaction.
+        with self._get_connection() as conn:
+            conn.execute("VACUUM")
 
         return count
