@@ -90,6 +90,27 @@ class TestMemoryBackend:
         assert "note" in stats.items_by_type or "NOTE" in stats.items_by_type
 
 
+    def test_compact_after_soft_delete_preserves_live_search(self, memory_db):
+        """Compaction must commit FTS changes before VACUUM, without losing live memory."""
+        removed = memory_db.store(MemoryItem(
+            type=MemoryType.NOTE,
+            source=MemorySource.CHAT,
+            text="Synthetic removed observation",
+        ))
+        retained = memory_db.store(MemoryItem(
+            type=MemoryType.NOTE,
+            source=MemorySource.CHAT,
+            text="Synthetic retained observation",
+        ))
+
+        assert memory_db.delete(removed)
+        assert memory_db.compact(remove_deleted=True) == 1
+        assert memory_db.retrieve(removed) is None
+        assert memory_db.retrieve(retained) is not None
+        assert memory_db.search("removed").items == []
+        assert any(item.id == retained for item in memory_db.search("retained").items)
+
+
 class TestRedaction:
     """Test redaction functionality."""
 
