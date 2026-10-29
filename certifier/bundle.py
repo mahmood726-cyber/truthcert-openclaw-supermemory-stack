@@ -50,24 +50,25 @@ def compute_bundle_id(
     claims: list[NumericClaim],
     scope_lock: ScopeLock,
     policy_id: str,
+    claims_sha256: Optional[str] = None,
 ) -> str:
-    """
-    Compute deterministic bundle ID from core content.
-    Uses only stable fields to ensure reproducibility.
-    """
-    # Sort claims by claim_id for determinism
-    claim_hashes = sorted([c.compute_hash() for c in claims])
-
+    """Derive a deterministic v2 full-payload ID or historical v1 claim ID."""
+    # No new bundle may reuse a legacy ID after changing an unbound CI bound,
+    # evidence URI or provenance field. Existing v1 callers keep their IDs.
+    source = (
+        {"claims_sha256": claims_sha256}
+        if claims_sha256 is not None
+        else {"claim_hashes": sorted([c.compute_hash() for c in claims])}
+    )
     canonical = json.dumps(
         {
             "policy_id": policy_id,
             "scope_lock_hash": scope_lock.compute_hash(),
-            "claim_hashes": claim_hashes,
+            **source,
         },
         sort_keys=True,
         separators=(",", ":"),
     )
-
     digest = hashlib.sha256(canonical.encode()).hexdigest()
     return f"{HASH_PREFIX}{digest}"
 
@@ -91,7 +92,7 @@ def create_bundle_structure(bundle_id: str) -> Path:
 def write_claims_jsonl(bundle_path: Path, claims: list[NumericClaim]) -> None:
     """Write claims to JSONL file."""
     claims_file = bundle_path / CLAIMS_FILE
-    with open(claims_file, "w") as f:
+    with open(claims_file, "w", encoding="utf-8") as f:
         for claim in claims:
             f.write(claim.model_dump_json() + "\n")
 
@@ -213,8 +214,13 @@ def create_bundle(
     # Determine outcome
     outcome = BundleOutcome.PASS if validation_summary.all_passed else BundleOutcome.REJECT
 
-    # Compute bundle ID
-    bundle_id = compute_bundle_id(claims, scope_lock, policy_id)
+    # V2 identity includes every serialized clinical field, not just the
+    # historical claim hash subset. Unicode bytes are always UTF-8.
+    claim_bytes = "".join(c.model_dump_json() + "\n" for c in claims).encode("utf-8")
+    expected_claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256(claim_bytes).hexdigest()}"
+    bundle_id = compute_bundle_id(
+        claims, scope_lock, policy_id, claims_sha256=expected_claims_sha256,
+    )
 
     # Create directory structure
     bundle_path = create_bundle_structure(bundle_id)
@@ -224,6 +230,8 @@ def create_bundle(
     # preserved, but cannot be promoted to complete-payload certification.
     write_claims_jsonl(bundle_path, claims)
     claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256((bundle_path / CLAIMS_FILE).read_bytes()).hexdigest()}"
+    if claims_sha256 != expected_claims_sha256:
+        raise ValueError("Serialized claims bytes changed before signing")
 
     # Write scope lock
     write_scope_lock(bundle_path, scope_lock)
@@ -362,7 +370,8 @@ def claims_payload_problems(bundle_path: Path, manifest: dict[str, Any]) -> list
     if (scope.policy_id != manifest.get("policy_id")
             or scope.profile.value != manifest.get("profile")):
         return ["Signed policy/profile does not match scope lock"]
-    if compute_bundle_id(parsed_claims, scope, scope.policy_id) != manifest.get("bundle_id"):
+    if compute_bundle_id(parsed_claims, scope, scope.policy_id,
+                         claims_sha256=expected) != manifest.get("bundle_id"):
         return ["Signed bundle_id disagrees with claims and scope"]
     return []
 
