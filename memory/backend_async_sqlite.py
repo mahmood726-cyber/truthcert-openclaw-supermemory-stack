@@ -3,13 +3,16 @@ Async SQLite backend with FTS5 for memory storage.
 Uses aiosqlite for non-blocking database operations in async applications.
 """
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
 import uuid
+from functools import wraps
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Concatenate, Optional, ParamSpec, TypeVar
 
 try:
     import aiosqlite
@@ -26,6 +29,24 @@ from .schema import (
     RetentionPolicy,
 )
 from .fts5_sanitizer import sanitize_fts5_query
+
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _serialized_write(
+    operation: Callable[Concatenate["AsyncLocalSQLiteBackend", _P], Awaitable[_R]],
+) -> Callable[Concatenate["AsyncLocalSQLiteBackend", _P], Awaitable[_R]]:
+    """Serialize writes without sacrificing concurrent reads or hiding SQLite errors."""
+    @wraps(operation)
+    async def guarded(
+        self: AsyncLocalSQLiteBackend, *args: _P.args, **kwargs: _P.kwargs,
+    ) -> _R:
+        async with self._write_lock:
+            return await operation(self, *args, **kwargs)
+
+    return guarded
 
 
 class AsyncLocalSQLiteBackend:
@@ -51,19 +72,24 @@ class AsyncLocalSQLiteBackend:
         self.pool_size = pool_size
         self._pool: list[aiosqlite.Connection] = []
         self._pool_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
         self._initialized = False
 
     async def initialize(self):
-        """Initialize the database and connection pool."""
-        if self._initialized:
-            return
+        """Initialize the schema exactly once even with concurrent first-use calls."""
+        async with self._init_lock:
+            if self._initialized:
+                return
 
-        # Create initial connection to set up schema
-        async with aiosqlite.connect(str(self.db_path)) as conn:
-            conn.row_factory = aiosqlite.Row
-            await self._init_schema(conn)
+            # WAL is a persistent database setting; set it once, not every time
+            # a parallel reader opens a connection (which can lock on Windows).
+            async with aiosqlite.connect(str(self.db_path), timeout=30.0) as conn:
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await self._init_schema(conn)
 
-        self._initialized = True
+            self._initialized = True
 
     async def _get_connection(self) -> aiosqlite.Connection:
         """Get a connection from the pool or create a new one."""
@@ -71,9 +97,8 @@ class AsyncLocalSQLiteBackend:
             if self._pool:
                 return self._pool.pop()
 
-        conn = await aiosqlite.connect(str(self.db_path))
+        conn = await aiosqlite.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = aiosqlite.Row
-        await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
@@ -168,6 +193,7 @@ class AsyncLocalSQLiteBackend:
 
         await conn.commit()
 
+    @_serialized_write
     async def store(self, item: MemoryItem) -> str:
         """
         Store a memory item asynchronously.
@@ -375,6 +401,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
+    @_serialized_write
     async def delete(self, item_id: str, hard: bool = False) -> bool:
         """
         Delete a memory item asynchronously.
@@ -403,6 +430,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
+    @_serialized_write
     async def wipe(self, confirm: bool = False) -> bool:
         """
         Wipe all memory data asynchronously.
@@ -494,6 +522,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
+    @_serialized_write
     async def compact(self, remove_deleted: bool = True) -> int:
         """
         Compact the database asynchronously.
