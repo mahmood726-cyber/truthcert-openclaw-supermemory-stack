@@ -353,6 +353,17 @@ def claims_payload_problems(bundle_path: Path, manifest: dict[str, Any]) -> list
         return ["Malformed claims.jsonl"]
     if manifest.get("claim_count") != len(lines):
         return ["Signed claim_count does not match claims.jsonl"]
+    try:
+        parsed_claims = [NumericClaim.model_validate(json.loads(line)) for line in lines]
+        scope_data = json.loads((bundle_path / SCOPE_LOCK_FILE).read_text(encoding="utf-8"))
+        scope = ScopeLock.model_validate(scope_data)
+    except (OSError, ValueError, TypeError):
+        return ["Cannot reconstruct signed claim identities and scope"]
+    if (scope.policy_id != manifest.get("policy_id")
+            or scope.profile.value != manifest.get("profile")):
+        return ["Signed policy/profile does not match scope lock"]
+    if compute_bundle_id(parsed_claims, scope, scope.policy_id) != manifest.get("bundle_id"):
+        return ["Signed bundle_id disagrees with claims and scope"]
     return []
 
 
