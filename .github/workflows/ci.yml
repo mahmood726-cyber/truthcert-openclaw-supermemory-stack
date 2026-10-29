@@ -97,7 +97,9 @@ jobs:
           pip install -e .
 
       - name: Run pip-audit for dependency vulnerabilities
-        run: pip-audit --strict
+        # The editable project itself has no PyPI release to audit; third-party
+        # dependencies remain fully audited, and Bandit still scans local code.
+        run: pip-audit --strict --skip-editable
 
       - name: Run bandit for security issues
         run: bandit -r certifier memory cli gateway renderer -ll -ii
