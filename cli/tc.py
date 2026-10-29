@@ -251,8 +251,9 @@ def _extract_verified_bundle(archive_path: Path, temporary_root: Path) -> Path:
     total_bytes = 0
     seen = set()
     with tarfile.open(archive_path, "r:gz") as archive:
-        members = archive.getmembers()
-        for member in members:
+        # Stream metadata and refuse after 1,024 members rather than materialising
+        # an attacker-controlled member list before the limit can run.
+        for member in archive:
             entry = member.name.rstrip("/")
             pieces = entry.split("/")
             if (
