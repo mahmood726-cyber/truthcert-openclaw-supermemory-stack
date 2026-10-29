@@ -256,13 +256,14 @@ class BundleManifest(BaseModel):
     outcome: BundleOutcome
     scope_lock_hash: str
     claim_count: int
+    claims_sha256: Optional[str] = None  # signed complete claims.jsonl payload for v2
     validators: list[str]
     validation_summary: ValidationSummary
     model_metadata: dict[str, Any] = Field(default_factory=dict)
     tool_metadata: dict[str, Any] = Field(default_factory=dict)
     signature_metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    version: str = "tc-bundle-v1"
+    version: str = "tc-bundle-v2"
 
 
 class BundleReceipt(BaseModel):
