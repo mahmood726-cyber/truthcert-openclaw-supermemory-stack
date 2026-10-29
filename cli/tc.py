@@ -282,7 +282,7 @@ def _extract_verified_bundle(archive_path: Path, temporary_root: Path) -> Path:
 
 
 def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock: bool):
-    from certifier.bundle import load_bundle
+    from certifier.bundle import load_bundle, claims_payload_problems
     from certifier.signing import verify_signature
     from certifier.models import ScopeLock
 
@@ -293,7 +293,7 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
         sys.exit(1)
 
     manifest = bundle_data["manifest"]
-    errors = []
+    errors = claims_payload_problems(bundle_path, manifest)
     warnings = []
 
     # Schema check
