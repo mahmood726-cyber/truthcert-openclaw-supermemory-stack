@@ -497,6 +497,41 @@ class TestAsyncConcurrentOperations:
         assert len(results[4]) >= 3  # list returned items
 
 
+    @pytest.mark.asyncio
+    async def test_parallel_first_use_deduplicates_without_lock_errors(self, temp_dir):
+        """First-use concurrent writers must not race schema, WAL or deduplication."""
+        import sqlite3
+
+        db_path = temp_dir / "parallel_first_use.db"
+        backend = AsyncLocalSQLiteBackend(str(db_path), pool_size=2)
+        items = [
+            MemoryItem(type=MemoryType.NOTE, text="Synthetic concurrent duplicate")
+            for _ in range(10)
+        ] + [
+            MemoryItem(type=MemoryType.NOTE, text=f"Synthetic unique item {i}")
+            for i in range(10)
+        ]
+        try:
+            ids = await asyncio.gather(*(backend.store(item) for item in items))
+            assert len(set(ids[:10])) == 1
+            assert len(set(ids[10:])) == 10
+            assert (await backend.get_stats()).total_items == 11
+
+            # A concurrent mutation/read must leave the database valid.
+            deleted, retrieved = await asyncio.gather(
+                backend.delete(ids[0]), backend.retrieve(ids[10]),
+            )
+            assert deleted is True
+            assert retrieved is not None
+            assert (await backend.get_stats()).total_items == 10
+        finally:
+            await backend.close()
+
+        # In particular on Windows, all pooled handles must be released.
+        with sqlite3.connect(str(db_path)) as conn:
+            assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+
+
 class TestAsyncDbHash:
     """Test database hash computation."""
 
