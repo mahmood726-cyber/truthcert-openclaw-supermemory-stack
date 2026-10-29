@@ -35,8 +35,8 @@ def test_verify_refuses_missing_required_evidence(unsigned_bundle, extra_flags, 
     assert "Verification PASSED" not in result.output
 
 
-def test_verify_explicit_opt_out_is_diagnostic_not_certifying(unsigned_bundle):
-    """Even deliberate opt-outs may not manufacture a signed PASS or success exit."""
+def test_verify_explicit_opt_out_cannot_rescue_invalid_legacy_fixture(unsigned_bundle):
+    """Skipped checks cannot override the independent payload-version refusal."""
     result = CliRunner().invoke(
         cli,
         [
@@ -47,5 +47,6 @@ def test_verify_explicit_opt_out_is_diagnostic_not_certifying(unsigned_bundle):
         ],
     )
     assert result.exit_code != 0, result.output
-    assert "Verification INCOMPLETE (NONCERTIFYING)" in result.output
+    assert "Verification FAILED" in result.output
+    assert "NONCERTIFYING: legacy manifest" in result.output
     assert "Verification PASSED" not in result.output
