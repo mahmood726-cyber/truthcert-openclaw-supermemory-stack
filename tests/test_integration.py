@@ -30,7 +30,7 @@ from certifier.models import (
 )
 from certifier.constants import Severity, BundleOutcome
 from certifier.bundle import create_bundle, load_bundle, compute_bundle_id
-from certifier.signing import sign_manifest, verify_signature, generate_keypair
+from certifier.signing import sign_manifest, verify_signature, generate_keypair, VerificationError
 from certifier.validators import ValidatorRegistry
 from certifier.qwed import QWEDVerifier, verify_all_claims, get_verification_summary
 
@@ -477,7 +477,7 @@ class TestSignatureIntegrity:
 
         # Tampered manifest should fail
         manifest["outcome"] = "REJECT"
-        with pytest.raises(Exception):
+        with pytest.raises(VerificationError, match="Invalid signature"):
             verify_signature(manifest, sig, pubkey)
 
     def test_deterministic_bundle_id(self, sample_claim, sample_scope_lock):
