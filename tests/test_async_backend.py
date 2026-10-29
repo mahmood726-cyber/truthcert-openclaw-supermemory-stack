@@ -191,6 +191,29 @@ class TestAsyncSearch:
         assert any("special" in item.tags for item in result.items)
 
     @pytest.mark.asyncio
+    async def test_search_tag_filter_treats_like_wildcards_literally(self, async_db):
+        """Literal percent and underscore in tags must not match other tag names."""
+        await async_db.store(MemoryItem(
+            type=MemoryType.NOTE,
+            source=MemorySource.CHAT,
+            text="Synthetic distinctive alpha memory",
+            tags=["phase%_checkpoint"],
+        ))
+        await async_db.store(MemoryItem(
+            type=MemoryType.NOTE,
+            source=MemorySource.CHAT,
+            text="Synthetic distinctive beta memory",
+            tags=["phaseX_checkpoint"],
+        ))
+
+        result = await async_db.search(
+            "Synthetic", tags_filter=["phase%_checkpoint"],
+        )
+        assert [item.text for item in result.items] == [
+            "Synthetic distinctive alpha memory",
+        ]
+
+    @pytest.mark.asyncio
     async def test_search_limit(self, async_db):
         """Test search respects limit parameter."""
         # Store many items
