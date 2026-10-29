@@ -219,8 +219,11 @@ def create_bundle(
     # Create directory structure
     bundle_path = create_bundle_structure(bundle_id)
 
-    # Write claims
+    # Write claims and bind their exact serialized bytes into the signed v2 manifest.
+    # The historical bundle_id algorithm remains intact; v1 signed artifacts are
+    # preserved, but cannot be promoted to complete-payload certification.
     write_claims_jsonl(bundle_path, claims)
+    claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256((bundle_path / CLAIMS_FILE).read_bytes()).hexdigest()}"
 
     # Write scope lock
     write_scope_lock(bundle_path, scope_lock)
@@ -245,6 +248,7 @@ def create_bundle(
         outcome=outcome,
         scope_lock_hash=scope_lock.compute_hash(),
         claim_count=len(claims),
+        claims_sha256=claims_sha256,
         validators=validators,
         validation_summary=validation_summary,
         model_metadata=model_metadata or {},
@@ -316,6 +320,40 @@ def load_bundle(bundle_path: Path) -> dict[str, Any]:
         "scope_lock": scope_lock,
         "path": str(bundle_path),
     }
+
+
+def claims_payload_problems(bundle_path: Path, manifest: dict[str, Any]) -> list[str]:
+    """Fail closed unless the complete claims file is covered by a v2 signature.
+
+    The historical v1 bundle ID hashes only selected claim fields; it does not
+    authenticate CI bounds, sample sizes, provenance, or every evidence field.
+    Never treat its valid manifest signature as complete claims verification.
+    """
+    if manifest.get("version") != "tc-bundle-v2":
+        return ["NONCERTIFYING: legacy manifest has no signed full claims payload digest"]
+    expected = manifest.get("claims_sha256")
+    if (not isinstance(expected, str) or not expected.startswith(HASH_PREFIX)
+            or len(expected) != len(HASH_PREFIX) + 64
+            or any(c not in "0123456789abcdef" for c in expected[len(HASH_PREFIX):])):
+        return ["Missing or invalid signed claims_sha256"]
+    try:
+        raw = (bundle_path / CLAIMS_FILE).read_bytes()
+    except OSError:
+        return ["Missing or unreadable claims.jsonl"]
+    observed = f"{HASH_PREFIX}{hashlib.sha256(raw).hexdigest()}"
+    if observed != expected:
+        return ["Signed claims payload digest mismatch"]
+    try:
+        lines = [line for line in raw.decode("utf-8").splitlines() if line.strip()]
+        if not lines:
+            return ["Empty claims.jsonl cannot establish a certified claim"]
+        if any(not isinstance(json.loads(line), dict) for line in lines):
+            return ["Malformed JSON claim entry"]
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return ["Malformed claims.jsonl"]
+    if manifest.get("claim_count") != len(lines):
+        return ["Signed claim_count does not match claims.jsonl"]
+    return []
 
 
 def list_bundles(limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
