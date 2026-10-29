@@ -122,7 +122,9 @@ def test_re_signed_wrong_bundle_identity_and_scope_policy_are_refused(signed_bun
     scope = ScopeLock.model_validate(
         json.loads((signed_bundle / "scope_lock.json").read_text(encoding="utf-8"))
     )
-    manifest["bundle_id"] = compute_bundle_id([original_claim], scope, "bronze")
+    manifest["bundle_id"] = compute_bundle_id(
+        [original_claim], scope, "bronze", claims_sha256=manifest["claims_sha256"],
+    )
     manifest["policy_id"] = "silver"
     signature, _ = sign_manifest(manifest)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
