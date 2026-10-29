@@ -63,6 +63,19 @@ def _verify(path):
     return CliRunner().invoke(cli, ["verify", str(path)])
 
 
+@pytest.mark.parametrize("skipped", [
+    ["--no-check-signature"],
+    ["--no-check-scope-lock"],
+    ["--no-check-signature", "--no-check-scope-lock"],
+])
+def test_valid_v2_bundle_with_skipped_checks_is_noncertifying(signed_bundle, skipped):
+    """Only a complete valid payload reaches INCOMPLETE rather than FAILED."""
+    result = CliRunner().invoke(cli, ["verify", str(signed_bundle), *skipped])
+    assert result.exit_code != 0, result.output
+    assert "Verification INCOMPLETE (NONCERTIFYING)" in result.output
+    assert "Verification PASSED" not in result.output
+
+
 def test_v2_signs_full_claim_payload_and_verifies(signed_bundle):
     manifest = json.loads((signed_bundle / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["version"] == "tc-bundle-v2"
