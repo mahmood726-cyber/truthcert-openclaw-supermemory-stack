@@ -221,18 +221,69 @@ def certify(claims_file: str, policy: str, output: Optional[str]):
 @click.option("--check-signature/--no-check-signature", default=True)
 @click.option("--check-scope-lock/--no-check-scope-lock", default=True)
 def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
-    """Verify a bundle's integrity and signature."""
+    """Verify a directory or a safely isolated bundle tarball."""
+    import tarfile
+    from tempfile import TemporaryDirectory
+
+    path = Path(bundle_path)
+    if path.suffix != ".gz":
+        return _verify_directory(path, check_signature, check_scope_lock)
+
+    # Only our .tar.gz bundle format is supported, not arbitrary gzip files.
+    if not path.name.endswith(".tar.gz"):
+        raise click.ClickException("Expected a .tar.gz bundle archive")
+    with TemporaryDirectory(prefix="truthcert-verify-") as temporary_dir:
+        try:
+            extracted = _extract_verified_bundle(path, Path(temporary_dir))
+            return _verify_directory(extracted, check_signature, check_scope_lock)
+        except (OSError, ValueError, tarfile.TarError) as exc:
+            raise click.ClickException(f"Unsafe or invalid bundle archive: {exc}") from exc
+
+
+def _extract_verified_bundle(archive_path: Path, temporary_root: Path) -> Path:
+    """Reject escaping, linked, duplicate and oversized archive members before extraction."""
+    import tarfile
+
+    expected_name = archive_path.name[:-7]  # remove .tar.gz
+    if not expected_name or expected_name in (".", ".."):
+        raise ValueError("Invalid bundle directory name")
+
+    total_bytes = 0
+    seen = set()
+    with tarfile.open(archive_path, "r:gz") as archive:
+        members = archive.getmembers()
+        for member in members:
+            entry = member.name.rstrip("/")
+            pieces = entry.split("/")
+            if (
+                entry.startswith(("/", "\\"))
+                or "\\" in entry
+                or ":" in entry
+                or not pieces
+                or pieces[0] != expected_name
+                or any(piece in ("", ".", "..") for piece in pieces)
+                or not (member.isfile() or member.isdir())
+            ):
+                raise ValueError("Archive member escapes bundle or uses an unsafe file type")
+            folded = entry.casefold()  # also reject aliases on case-insensitive Windows
+            if folded in seen:
+                raise ValueError("Duplicate archive member")
+            seen.add(folded)
+            total_bytes += member.size
+            if len(seen) > 1024 or member.size > 50_000_000 or total_bytes > 100_000_000:
+                raise ValueError("Bundle archive exceeds conservative extraction limits")
+
+        # Python >=3.11.4 data filter; no symlinks or special members survive
+        # the strict preflight, and the fresh temporary directory is isolated.
+        archive.extractall(temporary_root, filter="data")
+
+    return temporary_root / expected_name
+
+
+def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock: bool):
     from certifier.bundle import load_bundle
     from certifier.signing import verify_signature
     from certifier.models import ScopeLock
-
-    bundle_path = Path(bundle_path)
-    if bundle_path.suffix == ".gz":
-        # Extract tarball first
-        import tarfile
-        with tarfile.open(bundle_path, "r:gz") as tar:
-            tar.extractall(bundle_path.parent)
-        bundle_path = bundle_path.with_suffix("").with_suffix("")
 
     try:
         bundle_data = load_bundle(bundle_path)
