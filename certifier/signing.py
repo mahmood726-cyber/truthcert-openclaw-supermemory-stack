@@ -191,7 +191,7 @@ def compute_manifest_hash(manifest_data: dict[str, Any]) -> str:
         "claim_count": manifest_data.get("claim_count"),
         "validators": sorted(manifest_data.get("validators", [])),
     }
-    canonical = json.dumps(core_fields, sort_keys=True, separators=(",", ":"))
+    # v2 binds the complete claims.jsonl bytes. Legacy manifests have no such\n    # field and retain their original signature hash for historical verification.\n    if "claims_sha256" in manifest_data:\n        core_fields["version"] = manifest_data.get("version")\n        core_fields["claims_sha256"] = manifest_data.get("claims_sha256")\n    canonical = json.dumps(core_fields, sort_keys=True, separators=(",", ":"))
     return compute_content_hash(canonical.encode())
 
 
