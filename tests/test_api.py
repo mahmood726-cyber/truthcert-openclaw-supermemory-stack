@@ -363,6 +363,44 @@ class TestVerifyEndpoint:
         assert "errors" in data
         assert "warnings" in data
 
+    @pytest.mark.parametrize(
+        ("check_signature", "check_scope_lock"),
+        [(False, False), (False, True), (True, False)],
+    )
+    def test_skipped_integrity_checks_never_report_valid(
+        self, client, valid_claim_data, default_scope_lock, signing_keys,
+        check_signature, check_scope_lock,
+    ):
+        """A syntactically valid real bundle is not certified by skipped controls."""
+        certified = client.post(
+            f"{API_V1}/certify",
+            json={
+                "claims": [valid_claim_data],
+                "policy_id": "bronze",
+                "scope_lock": default_scope_lock,
+            },
+        )
+        assert certified.status_code == 200
+        bundle_id = certified.json()["bundle_id"]
+        response = client.post(
+            f"{API_V1}/verify",
+            json={
+                "bundle_id": bundle_id,
+                "check_signature": check_signature,
+                "check_scope_lock": check_scope_lock,
+            },
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert result["schema_valid"] is True
+        assert result["valid"] is False
+        if not check_signature:
+            assert result["signature_valid"] is None
+            assert "NONCERTIFYING: signature verification skipped" in result["warnings"]
+        if not check_scope_lock:
+            assert result["scope_lock_valid"] is None
+            assert "NONCERTIFYING: scope lock verification skipped" in result["warnings"]
+
 
 class TestBundlesEndpoint:
     """Test /api/v1/bundles endpoints."""

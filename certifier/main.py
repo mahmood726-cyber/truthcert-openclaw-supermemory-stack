@@ -418,7 +418,13 @@ async def verify_bundle(request: Request, body: VerifyRequest):
             scope_lock_valid = False
             errors.append("Missing scope lock file")
 
-    valid = schema_valid and (signature_valid is None or signature_valid) and (scope_lock_valid is None or scope_lock_valid)
+    # Disabled checks permit diagnostic inspection only. In particular,
+    # None means NOT_CHECKED, never an implicit True in a public valid flag.
+    if not body.check_signature:
+        warnings.append("NONCERTIFYING: signature verification skipped")
+    if not body.check_scope_lock:
+        warnings.append("NONCERTIFYING: scope lock verification skipped")
+    valid = schema_valid and signature_valid is True and scope_lock_valid is True
 
     return VerifyResponse(
         bundle_id=bundle_id,
