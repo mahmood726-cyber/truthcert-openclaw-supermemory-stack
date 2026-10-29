@@ -3,6 +3,7 @@ Tests for FastAPI endpoints.
 """
 
 import os
+import json
 import pytest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -625,3 +626,34 @@ class TestContentTypeHandling:
         response = client.get("/health")
 
         assert "application/json" in response.headers.get("content-type", "")
+
+
+def test_verify_api_refuses_modified_signed_claim_payload(
+    client, valid_claim_data, default_scope_lock, signing_keys,
+):
+    """A still-valid signed manifest must not authenticate altered CI bounds."""
+    created = client.post(
+        f"{API_V1}/certify",
+        json={
+            "claims": [valid_claim_data],
+            "policy_id": "bronze",
+            "scope_lock": default_scope_lock,
+        },
+    )
+    assert created.status_code == 200, created.text
+    bundle_id = created.json()["bundle_id"]
+    before = client.post(f"{API_V1}/verify", json={"bundle_id": bundle_id})
+    assert before.status_code == 200 and before.json()["valid"] is True, before.text
+
+    bundle_path = Path(os.environ["TRUTHCERT_BUNDLE_DIR"]) / (
+        "bundle_" + bundle_id.removeprefix("sha256:")[:16]
+    )
+    claims_path = bundle_path / "claims.jsonl"
+    original = json.loads(claims_path.read_text(encoding="utf-8").strip())
+    original["lower_bound"] = -100
+    claims_path.write_text(json.dumps(original) + "\n", encoding="utf-8")
+
+    result = client.post(f"{API_V1}/verify", json={"bundle_id": bundle_id})
+    assert result.status_code == 200
+    assert result.json()["valid"] is False
+    assert "Signed claims payload digest mismatch" in result.json()["errors"]
