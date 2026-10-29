@@ -300,10 +300,11 @@ class AsyncLocalSQLiteBackend:
                 sql += f" AND ({tag_conditions})"
                 # Escape SQL LIKE wildcards properly (don't remove them, escape them)
                 # This allows literal % and _ in tag names
-                params.extend([
-                    f"%{tag.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
+                escaped_tags = [
+                    tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     for tag in tags_filter
-                ])
+                ]
+                params.extend(f"%{tag}%" for tag in escaped_tags)
 
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
