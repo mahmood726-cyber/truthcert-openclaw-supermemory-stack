@@ -501,6 +501,7 @@ class TestAsyncConcurrentOperations:
     async def test_parallel_first_use_deduplicates_without_lock_errors(self, temp_dir):
         """First-use concurrent writers must not race schema, WAL or deduplication."""
         import sqlite3
+        from contextlib import closing
 
         db_path = temp_dir / "parallel_first_use.db"
         backend = AsyncLocalSQLiteBackend(str(db_path), pool_size=2)
@@ -528,7 +529,9 @@ class TestAsyncConcurrentOperations:
             await backend.close()
 
         # In particular on Windows, all pooled handles must be released.
-        with sqlite3.connect(str(db_path)) as conn:
+        # sqlite3.Connection's context manager commits but does not close:
+        # Windows cannot clean the temporary directory until the handle closes.
+        with closing(sqlite3.connect(str(db_path))) as conn:
             assert conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
 
 
