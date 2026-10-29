@@ -321,8 +321,8 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
                 console.print(f"  [red]✗ Signature invalid: {e}[/red]")
                 errors.append(str(e))
         else:
-            console.print("  [yellow]⚠ No signature files found[/yellow]")
-            warnings.append("Missing signature files")
+            console.print("  [red]✗ Missing signature files[/red]")
+            errors.append("Missing signature files")
 
     # Scope lock check
     if check_scope_lock:
@@ -338,8 +338,8 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
                 console.print("  [red]✗ Scope lock hash mismatch[/red]")
                 errors.append("Scope lock hash mismatch")
         else:
-            console.print("  [yellow]⚠ No scope lock file[/yellow]")
-            warnings.append("Missing scope lock")
+            console.print("  [red]✗ Missing scope lock file[/red]")
+            errors.append("Missing scope lock file")
 
     # Summary
     console.print()
