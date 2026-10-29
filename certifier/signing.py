@@ -177,11 +177,14 @@ def compute_content_hash(content: bytes) -> str:
 
 
 def compute_manifest_hash(manifest_data: dict[str, Any]) -> str:
-    """
-    Compute deterministic hash of manifest for signing.
-    Uses only core fields to ensure stability.
-    """
-    # Select only fields that should be signed
+    """Hash full v2 manifests; preserve historical v1 core-field signatures."""
+    if manifest_data.get("version") == "tc-bundle-v2":
+        # Include *all* v2 fields, not just the claim-payload digest: changing
+        # validation details or model metadata must also break the signature.
+        canonical = json.dumps(manifest_data, sort_keys=True, separators=(",", ":"))
+        return compute_content_hash(canonical.encode())
+
+    # Exact historical v1 scheme, retained for verifying old signatures.
     core_fields = {
         "bundle_id": manifest_data.get("bundle_id"),
         "policy_id": manifest_data.get("policy_id"),
@@ -191,7 +194,7 @@ def compute_manifest_hash(manifest_data: dict[str, Any]) -> str:
         "claim_count": manifest_data.get("claim_count"),
         "validators": sorted(manifest_data.get("validators", [])),
     }
-    # v2 binds the complete claims.jsonl bytes. Legacy manifests have no such\n    # field and retain their original signature hash for historical verification.\n    if "claims_sha256" in manifest_data:\n        core_fields["version"] = manifest_data.get("version")\n        core_fields["claims_sha256"] = manifest_data.get("claims_sha256")\n    canonical = json.dumps(core_fields, sort_keys=True, separators=(",", ":"))
+    canonical = json.dumps(core_fields, sort_keys=True, separators=(",", ":"))
     return compute_content_hash(canonical.encode())
 
 
