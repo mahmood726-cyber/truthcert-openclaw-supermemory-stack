@@ -76,6 +76,18 @@ def test_valid_v2_bundle_with_skipped_checks_is_noncertifying(signed_bundle, ski
     assert "Verification PASSED" not in result.output
 
 
+def test_signed_claims_use_identical_utf8_lf_bytes_on_all_platforms(signed_bundle):
+    """Windows must not translate signed JSONL LF bytes to CRLF."""
+    import hashlib
+
+    raw = (signed_bundle / "claims.jsonl").read_bytes()
+    claim = NumericClaim.model_validate_json(raw.decode("utf-8").strip())
+    assert raw == (claim.model_dump_json() + "\n").encode("utf-8")
+    assert b"\r\n" not in raw
+    manifest = json.loads((signed_bundle / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["claims_sha256"] == "sha256:" + hashlib.sha256(raw).hexdigest()
+
+
 def test_v2_signs_full_claim_payload_and_verifies(signed_bundle):
     manifest = json.loads((signed_bundle / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["version"] == "tc-bundle-v2"
