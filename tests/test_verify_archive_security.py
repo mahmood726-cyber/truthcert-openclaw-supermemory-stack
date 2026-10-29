@@ -86,3 +86,15 @@ def test_archive_member_size_limit_refuses_before_extraction(tmp_path):
         tar.addfile(huge, io.BytesIO(b"0" * 50_000_001))
     with pytest.raises(ValueError, match="extraction limits"):
         _extract_verified_bundle(archive_path, tmp_path / "output")
+
+
+def test_archive_member_count_limit_refuses_before_extraction(tmp_path):
+    archive_path = tmp_path / "bundle_test.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as tar:
+        for i in range(1025):
+            member = tarfile.TarInfo(f"bundle_test/file_{i}.json")
+            member.size = 0
+            tar.addfile(member, io.BytesIO(b""))
+    with pytest.raises(ValueError, match="extraction limits"):
+        _extract_verified_bundle(archive_path, tmp_path / "output")
+    assert not (tmp_path / "output").exists()
