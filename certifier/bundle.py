@@ -92,9 +92,11 @@ def create_bundle_structure(bundle_id: str) -> Path:
 def write_claims_jsonl(bundle_path: Path, claims: list[NumericClaim]) -> None:
     """Write claims to JSONL file."""
     claims_file = bundle_path / CLAIMS_FILE
-    with open(claims_file, "w", encoding="utf-8") as f:
-        for claim in claims:
-            f.write(claim.model_dump_json() + "\n")
+    # Commit the exact UTF-8 bytes that the v2 manifest hashes. Text-mode
+    # writing translates newlines to CRLF on Windows and made otherwise
+    # correct synthetic claim bundles refuse signing on that platform.
+    payload = "".join(claim.model_dump_json() + "\n" for claim in claims).encode("utf-8")
+    claims_file.write_bytes(payload)
 
 
 def write_scope_lock(bundle_path: Path, scope_lock: ScopeLock) -> None:
