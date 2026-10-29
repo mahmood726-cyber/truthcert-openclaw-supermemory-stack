@@ -381,6 +381,14 @@ async def verify_bundle(request: Request, body: VerifyRequest):
         schema_valid = False
         errors.append("Missing outcome in manifest")
 
+    # Full claims payload integrity is necessary in addition to a manifest
+    # signature: legacy bundle IDs omit clinical fields such as CI bounds.
+    from .bundle import claims_payload_problems
+    payload_errors = claims_payload_problems(bundle_path, manifest)
+    if payload_errors:
+        schema_valid = False
+        errors.extend(payload_errors)
+
     # Signature validation
     signature_valid = None
     if body.check_signature:
