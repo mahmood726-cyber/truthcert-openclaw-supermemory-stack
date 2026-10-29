@@ -348,11 +348,23 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
         for error in errors:
             console.print(f"  - {error}")
         sys.exit(1)
-    else:
-        console.print("[green]Verification PASSED[/green]")
-        if warnings:
-            for warning in warnings:
-                console.print(f"  [yellow]Warning: {warning}[/yellow]")
+    # Explicitly skipped integrity checks are diagnostic inspection, NOT
+    # an authenticated or scope-verified PASS. Fail the process status too:
+    # automation must never promote an unchecked fixture on exit code zero.
+    if not (check_signature and check_scope_lock):
+        skipped = []
+        if not check_signature:
+            skipped.append("signature")
+        if not check_scope_lock:
+            skipped.append("scope lock")
+        console.print(
+            f"[yellow]Verification INCOMPLETE (NONCERTIFYING): skipped {', '.join(skipped)}[/yellow]"
+        )
+        sys.exit(1)
+    console.print("[green]Verification PASSED[/green]")
+    if warnings:
+        for warning in warnings:
+            console.print(f"  [yellow]Warning: {warning}[/yellow]")
 
 
 @cli.command()

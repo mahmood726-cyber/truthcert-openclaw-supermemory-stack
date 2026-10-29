@@ -35,8 +35,8 @@ def test_verify_refuses_missing_required_evidence(unsigned_bundle, extra_flags, 
     assert "Verification PASSED" not in result.output
 
 
-def test_verify_requires_explicit_opt_out_for_both_checks(unsigned_bundle):
-    """The caller may inspect an unsigned fixture only with both opt-outs explicit."""
+def test_verify_explicit_opt_out_is_diagnostic_not_certifying(unsigned_bundle):
+    """Even deliberate opt-outs may not manufacture a signed PASS or success exit."""
     result = CliRunner().invoke(
         cli,
         [
@@ -46,5 +46,6 @@ def test_verify_requires_explicit_opt_out_for_both_checks(unsigned_bundle):
             "--no-check-scope-lock",
         ],
     )
-    assert result.exit_code == 0, result.output
-    assert "Verification PASSED" in result.output
+    assert result.exit_code != 0, result.output
+    assert "Verification INCOMPLETE (NONCERTIFYING)" in result.output
+    assert "Verification PASSED" not in result.output

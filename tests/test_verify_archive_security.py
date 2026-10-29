@@ -41,8 +41,11 @@ def test_tarball_verification_uses_isolated_temp_directory(tmp_path):
     result = CliRunner().invoke(
         cli, ["verify", str(archive), "--no-check-signature", "--no-check-scope-lock"]
     )
-    assert result.exit_code == 0, result.output
-    assert "Verification PASSED" in result.output
+    # Both explicit opt-outs permit safe archive inspection but cannot
+    # certify an unsigned fixture or return a machine-success status.
+    assert result.exit_code != 0, result.output
+    assert "Verification INCOMPLETE (NONCERTIFYING)" in result.output
+    assert "Verification PASSED" not in result.output
     # No writes next to an untrusted input archive.
     assert not (tmp_path / "bundle_test").exists()
 
