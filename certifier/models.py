@@ -111,6 +111,14 @@ class EvidenceType(str, Enum):
 # =============================================================================
 
 
+def is_canonical_sha256_content_hash(value: str) -> bool:
+    """Validate SHA-256 digest syntax; this does not authenticate the source."""
+    if not isinstance(value, str) or not value.startswith(HASH_PREFIX):
+        return False
+    digest = value[len(HASH_PREFIX):]
+    return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
+
+
 class EvidenceLocator(BaseModel):
     """Reference to evidence supporting a claim."""
     source_type: EvidenceType
@@ -124,9 +132,9 @@ class EvidenceLocator(BaseModel):
     @field_validator("content_hash")
     @classmethod
     def validate_hash(cls, v: str) -> str:
-        """Ensure hash has proper prefix."""
-        if not v.startswith(HASH_PREFIX):
-            raise ValueError(f"Content hash must start with {HASH_PREFIX}")
+        """Reject noncanonical digests before they become evidence identifiers."""
+        if not is_canonical_sha256_content_hash(v):
+            raise ValueError("Content hash must be sha256: followed by 64 lowercase hexadecimal characters")
         return v
 
 
