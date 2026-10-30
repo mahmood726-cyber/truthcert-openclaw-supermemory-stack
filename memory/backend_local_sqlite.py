@@ -295,6 +295,13 @@ class LocalSQLiteBackend:
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination."""
+        # SQLite treats LIMIT -1 as unlimited and negative OFFSET as zero.
+        # Reject invalid bounds before reading any private memory records.
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be a nonnegative integer")
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
