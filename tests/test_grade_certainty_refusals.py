@@ -32,7 +32,7 @@ def test_consistent_high_grade_passes(sample_claim, sample_scope_lock, field, va
     result = GRADECertaintyValidator().run([claim], sample_scope_lock, {})
     assert result.passed, result.details
     assert result.details["validated_count"] == 1
-    assert result.details["assessments"][0]["final_certainty"] == "high"
+    assert result.details["assessments"][0]["final_certainty"] == "HIGH"
 
 
 @pytest.mark.parametrize("value", ["LOW", 2, "very-low"])
