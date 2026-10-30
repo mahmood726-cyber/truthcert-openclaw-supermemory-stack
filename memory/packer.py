@@ -2,7 +2,7 @@
 Context packer - deterministic injection of memory into prompts.
 """
 
-from typing import Any, Optional
+from typing import Any
 import hashlib
 import json
 
@@ -51,7 +51,7 @@ class ContextPacker:
     def pack(
         self,
         items: list[MemoryItem],
-        max_chars: Optional[int] = None,
+        max_chars: int | None = None,
         include_provenance: bool = True,
     ) -> PackedContext:
         """
@@ -120,7 +120,7 @@ class ContextPacker:
     def pack_from_recall(
         self,
         recall_result: RecallResult,
-        max_chars: Optional[int] = None,
+        max_chars: int | None = None,
     ) -> PackedContext:
         """Pack items from a recall result."""
         return self.pack(
@@ -132,7 +132,7 @@ class ContextPacker:
         self,
         query: str,
         recall_func,
-        max_chars: Optional[int] = None,
+        max_chars: int | None = None,
     ) -> PackedContext:
         """
         Pack context for a conversation turn.

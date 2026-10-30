@@ -4,7 +4,7 @@ Memory schema definitions using Pydantic v2.
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 from pydantic import BaseModel, Field
 import hashlib
 import json
@@ -111,8 +111,8 @@ class MemoryStats(BaseModel):
     total_bytes: int = 0
     items_by_type: dict[str, int] = Field(default_factory=dict)
     items_by_source: dict[str, int] = Field(default_factory=dict)
-    oldest_item_date: Optional[datetime] = None
-    newest_item_date: Optional[datetime] = None
+    oldest_item_date: datetime | None = None
+    newest_item_date: datetime | None = None
     db_hash: str = ""
 
 

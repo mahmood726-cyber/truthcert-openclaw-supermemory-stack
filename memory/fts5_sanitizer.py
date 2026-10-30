@@ -6,7 +6,7 @@ exploited if user input is passed directly to MATCH clauses.
 """
 
 import re
-from typing import Optional
+
 
 
 # FTS5 special characters and operators that need escaping
@@ -158,7 +158,7 @@ def escape_fts5_string(value: str) -> str:
 def build_safe_fts5_query(
     terms: list[str],
     operator: str = "AND",
-    column: Optional[str] = None,
+    column: str | None = None,
 ) -> str:
     """
     Build a safe FTS5 query from multiple terms.
@@ -198,7 +198,7 @@ def build_safe_fts5_query(
     return query
 
 
-def validate_fts5_query(query: str) -> tuple[bool, Optional[str]]:
+def validate_fts5_query(query: str) -> tuple[bool, str | None]:
     """
     Validate an FTS5 query for safety.
 

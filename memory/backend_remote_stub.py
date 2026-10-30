@@ -3,7 +3,7 @@ Remote backend stub - disabled by default.
 Provides interface only for future implementation.
 """
 
-from typing import Any, Optional, Protocol
+from typing import Any, Protocol
 from .schema import MemoryItem, MemoryStats, RecallResult, MemoryType, MemorySource
 
 
@@ -14,7 +14,7 @@ class RemoteBackend(Protocol):
         """Store a memory item remotely."""
         ...
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         ...
 
@@ -22,7 +22,7 @@ class RemoteBackend(Protocol):
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
     ) -> RecallResult:
         """Search remote memory."""
         ...
@@ -55,7 +55,7 @@ class RemoteBackendStub:
         self._check_enabled()
         raise NotImplementedError("Remote store not implemented")
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         self._check_enabled()
         raise NotImplementedError("Remote retrieve not implemented")
@@ -64,7 +64,7 @@ class RemoteBackendStub:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
     ) -> RecallResult:
         """Search remote memory."""
         self._check_enabled()
