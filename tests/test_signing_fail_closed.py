@@ -71,10 +71,14 @@ def test_duplicate_bundle_cannot_replace_existing_signature(
     summary = ValidationSummary(
         results=[], all_passed=True, has_blocking=False, has_warnings=False,
     )
-    kwargs = dict(
-        claims=[sample_claim], scope_lock=sample_scope_lock,
-        policy_id="silver", validation_summary=summary, validators=[], sign=True,
-    )
+    kwargs = {
+        "claims": [sample_claim],
+        "scope_lock": sample_scope_lock,
+        "policy_id": "silver",
+        "validation_summary": summary,
+        "validators": [],
+        "sign": True,
+    }
     published_path, _receipt = bundle.create_bundle(**kwargs)
     signature_path = published_path / "attest" / "signature.ed25519"
     original_signature = signature_path.read_bytes()
