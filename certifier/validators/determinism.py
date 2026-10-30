@@ -66,9 +66,9 @@ class DeterminismValidator(Validator):
                     continue
 
                 # Check for reproducibility fields
-                required_fields = ["algorithm", "inputs_hash"]
+                required_fields = ["algorithm", "inputs_hash", "inputs"]
                 for field in required_fields:
-                    if field not in computation:
+                    if field not in computation or computation[field] is None or (field != "inputs" and not computation[field]):
                         issues.append({
                             "claim_id": claim.claim_id,
                             "issue": f"Computation metadata missing required field: {field}",
@@ -77,7 +77,7 @@ class DeterminismValidator(Validator):
                 # Verify inputs hash if provided
                 inputs = computation.get("inputs")
                 expected_hash = computation.get("inputs_hash")
-                if inputs and expected_hash:
+                if inputs is not None and expected_hash:
                     computed_hash = self._compute_inputs_hash(inputs)
                     if computed_hash != expected_hash:
                         issues.append({
@@ -90,7 +90,7 @@ class DeterminismValidator(Validator):
                 # Check for seed if algorithm involves randomness
                 algorithm = computation.get("algorithm", "")
                 if any(kw in algorithm.lower() for kw in ["random", "monte", "bootstrap", "sample"]):
-                    if "seed" not in computation:
+                    if computation.get("seed") is None:
                         issues.append({
                             "claim_id": claim.claim_id,
                             "issue": "Stochastic algorithm missing seed for reproducibility",
