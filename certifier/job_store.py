@@ -82,10 +82,9 @@ class ConnectionPool:
             conn = self._pool.get_nowait()
             # Health check
             if not self._health_check(conn):
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                # If the bad handle cannot be closed, refuse rather than
+                # silently continuing with a possibly leaked SQLite lock.
+                conn.close()
                 conn = self._create_connection()
             return conn
         except queue.Empty:
@@ -102,21 +101,15 @@ class ConnectionPool:
         try:
             self._pool.put_nowait(conn)
         except queue.Full:
-            # Pool full, close connection
-            try:
-                conn.close()
-            except Exception:
-                pass
+            # Do not hide failures to release an excess SQLite handle.
+            conn.close()
 
     def close_all(self):
         """Close all connections in the pool."""
         while True:
             try:
                 conn = self._pool.get_nowait()
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                conn.close()
             except queue.Empty:
                 break
 
@@ -471,6 +464,12 @@ def init_job_store(db_path: Optional[str] = None) -> JobStore:
     """
     global _job_store
     with _singleton_lock:
+        # On Windows, overwriting the singleton without closing the old
+        # pool leaves open SQLite handles and can lock or leak the old DB.
+        # A close failure must prevent replacement, not be ignored.
+        if _job_store is not None:
+            _job_store.close()
+        _job_store = None
         _job_store = JobStore(db_path)
         return _job_store
 
@@ -484,8 +483,7 @@ def reset_job_store() -> None:
     global _job_store
     with _singleton_lock:
         if _job_store is not None:
-            try:
-                _job_store.close()
-            except Exception:
-                pass
+            # Preserve the reference and surface failures to release DB
+            # handles, rather than claiming reset succeeded.
+            _job_store.close()
         _job_store = None
