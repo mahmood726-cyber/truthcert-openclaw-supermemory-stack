@@ -3,8 +3,8 @@ Redaction module - scrubs secrets and PII before storage.
 """
 
 import re
-from typing import Any, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -40,7 +40,7 @@ class Redactor:
     """
 
     # Default redaction patterns
-    DEFAULT_RULES = [
+    DEFAULT_RULES: ClassVar[tuple[RedactionRule, ...]] = (
         # API keys and tokens
         RedactionRule(
             name="api_key",
@@ -257,10 +257,10 @@ class Redactor:
             pattern=re.compile(r'(?i)(secret|password|key|token)[_-]?base64\s*[=:]\s*["\']?([a-zA-Z0-9+/]{40,}={0,2})["\']?'),
             replacement=r'\1=[BASE64_SECRET_REDACTED]',
         ),
-    ]
+    )
 
     # Optional rules (disabled by default)
-    OPTIONAL_RULES = [
+    OPTIONAL_RULES: ClassVar[tuple[RedactionRule, ...]] = (
         RedactionRule(
             name="email",
             pattern=re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'),
@@ -279,11 +279,11 @@ class Redactor:
             replacement='[PHONE_REDACTED]',
             enabled=False,
         ),
-    ]
+    )
 
     def __init__(
         self,
-        custom_rules: Optional[list[RedactionRule]] = None,
+        custom_rules: list[RedactionRule] | None = None,
         enable_email_redaction: bool = False,
         enable_ip_redaction: bool = False,
         enable_phone_redaction: bool = False,
@@ -297,23 +297,21 @@ class Redactor:
             enable_ip_redaction: Enable IP address redaction
             enable_phone_redaction: Enable phone number redaction
         """
-        self.rules = list(self.DEFAULT_RULES)
+        # Rules are mutable dataclasses. Do not share them across Redactors.
+        self.rules = [replace(rule) for rule in self.DEFAULT_RULES]
 
-        # Add optional rules if enabled
-        for rule in self.OPTIONAL_RULES:
-            if rule.name == "email" and enable_email_redaction:
-                rule.enabled = True
-            elif rule.name == "ip_address" and enable_ip_redaction:
-                rule.enabled = True
-            elif rule.name == "phone" and enable_phone_redaction:
-                rule.enabled = True
+        enabled_optional = {
+            "email": enable_email_redaction,
+            "ip_address": enable_ip_redaction,
+            "phone": enable_phone_redaction,
+        }
+        for template in self.OPTIONAL_RULES:
+            if enabled_optional.get(template.name, False):
+                self.rules.append(replace(template, enabled=True))
 
-            if rule.enabled:
-                self.rules.append(rule)
-
-        # Add custom rules
+        # Caller-owned custom rules must not mutate our policy after setup.
         if custom_rules:
-            self.rules.extend(custom_rules)
+            self.rules.extend(replace(rule) for rule in custom_rules)
 
     def redact(self, text: str) -> tuple[str, RedactionResult]:
         """
@@ -349,36 +347,23 @@ class Redactor:
 
         return redacted_text, result
 
+    def _redact_value(self, value: Any) -> Any:
+        """Redact strings at any depth in JSON-compatible nested metadata."""
+        if isinstance(value, str):
+            return self.redact(value)[0]
+        if isinstance(value, dict):
+            return {key: self._redact_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._redact_value(item) for item in value]
+        return value
+
     def redact_dict(self, data: dict[str, Any]) -> dict[str, Any]:
-        """
-        Recursively redact sensitive information from a dictionary.
-
-        Args:
-            data: Dictionary to redact
-
-        Returns:
-            Redacted dictionary
-        """
-        result = {}
-        for key, value in data.items():
-            if isinstance(value, str):
-                redacted, _ = self.redact(value)
-                result[key] = redacted
-            elif isinstance(value, dict):
-                result[key] = self.redact_dict(value)
-            elif isinstance(value, list):
-                result[key] = [
-                    self.redact_dict(item) if isinstance(item, dict)
-                    else (self.redact(item)[0] if isinstance(item, str) else item)
-                    for item in value
-                ]
-            else:
-                result[key] = value
-        return result
+        """Recursively redact nested dictionaries and lists before memory storage."""
+        return {key: self._redact_value(value) for key, value in data.items()}
 
     def add_rule(self, rule: RedactionRule) -> None:
         """Add a custom redaction rule."""
-        self.rules.append(rule)
+        self.rules.append(replace(rule))
 
     def remove_rule(self, name: str) -> bool:
         """Remove a rule by name."""
@@ -401,7 +386,7 @@ SENSITIVE_TOOL_DENYLIST = [
 ]
 
 
-def should_capture_tool(tool_name: str, denylist: Optional[list[str]] = None) -> bool:
+def should_capture_tool(tool_name: str, denylist: list[str] | None = None) -> bool:
     """
     Check if a tool's output should be captured to memory.
 
