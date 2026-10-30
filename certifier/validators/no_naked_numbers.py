@@ -33,38 +33,46 @@ class NoNakedNumbersValidator(Validator):
         for claim in claims:
             # Check for evidence
             if not claim.evidence:
-                naked_numbers.append({
-                    "claim_id": claim.claim_id,
-                    "value": claim.value,
-                    "issue": "No evidence locators",
-                })
+                naked_numbers.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "value": claim.value,
+                        "issue": "No evidence locators",
+                    }
+                )
                 continue
 
             # Check all evidence has content hashes
             for i, evidence in enumerate(claim.evidence):
                 if not evidence.content_hash:
-                    naked_numbers.append({
-                        "claim_id": claim.claim_id,
-                        "value": claim.value,
-                        "evidence_index": i,
-                        "issue": "Evidence missing content hash",
-                    })
+                    naked_numbers.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "value": claim.value,
+                            "evidence_index": i,
+                            "issue": "Evidence missing content hash",
+                        }
+                    )
 
                 if not evidence.uri:
-                    naked_numbers.append({
-                        "claim_id": claim.claim_id,
-                        "value": claim.value,
-                        "evidence_index": i,
-                        "issue": "Evidence missing URI",
-                    })
+                    naked_numbers.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "value": claim.value,
+                            "evidence_index": i,
+                            "issue": "Evidence missing URI",
+                        }
+                    )
 
             # Check provenance exists
             if not claim.provenance:
-                issues.append({
-                    "claim_id": claim.claim_id,
-                    "issue": "Missing provenance metadata (warning)",
-                    "severity": "warn",
-                })
+                issues.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": "Missing provenance metadata (warning)",
+                        "severity": "warn",
+                    }
+                )
 
         # Naked numbers are blocking
         if naked_numbers:

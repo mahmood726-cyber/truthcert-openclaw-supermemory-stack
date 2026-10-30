@@ -3,8 +3,6 @@ Tests for codebase indexer.
 """
 
 import pytest
-import tempfile
-from pathlib import Path
 
 from memory.backend_local_sqlite import LocalSQLiteBackend
 from memory.codebase_indexer import CodebaseIndexer

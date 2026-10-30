@@ -2,16 +2,15 @@
 Memory compaction - summarizes old items into stable summaries.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
+from .backend_local_sqlite import LocalSQLiteBackend
 from .schema import (
     MemoryItem,
-    MemoryType,
     MemorySource,
-    MemoryStats,
+    MemoryType,
 )
-from .backend_local_sqlite import LocalSQLiteBackend
 
 
 class MemoryCompactor:
@@ -47,7 +46,7 @@ class MemoryCompactor:
         Returns:
             Summary of compaction actions
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
 
         # Get all items older than cutoff
         old_items = []
@@ -68,11 +67,9 @@ class MemoryCompactor:
         windows: dict[str, list[MemoryItem]] = {}
         for item in old_items:
             # Calculate window key
-            window_start = item.created_at_utc.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            window_start = item.created_at_utc.replace(hour=0, minute=0, second=0, microsecond=0)
             # Align to window
-            days_offset = (window_start - datetime(2020, 1, 1, tzinfo=timezone.utc)).days
+            days_offset = (window_start - datetime(2020, 1, 1, tzinfo=UTC)).days
             window_num = days_offset // summary_window_days
             window_key = f"window_{window_num}"
 
@@ -151,10 +148,7 @@ class MemoryCompactor:
 
         # Get oldest items (excluding summaries)
         all_items = self.backend.list_items(limit=stats.total_items)
-        candidates = [
-            item for item in all_items
-            if item.type != MemoryType.SUMMARY
-        ]
+        candidates = [item for item in all_items if item.type != MemoryType.SUMMARY]
 
         # Sort by age (oldest first)
         candidates.sort(key=lambda x: x.created_at_utc)
@@ -236,9 +230,11 @@ class MemoryCompactor:
 
         # Build summary
         parts = [
-            f"Compacted {len(items)} items from "
-            f"{min(i.created_at_utc for i in items).strftime('%Y-%m-%d')} to "
-            f"{max(i.created_at_utc for i in items).strftime('%Y-%m-%d')}"
+            (
+                f"Compacted {len(items)} items from "
+                f"{min(i.created_at_utc for i in items).strftime('%Y-%m-%d')} to "
+                f"{max(i.created_at_utc for i in items).strftime('%Y-%m-%d')}"
+            ),
         ]
 
         for type_name, texts in by_type.items():

@@ -9,13 +9,11 @@ Page MJ, et al. The PRISMA 2020 statement: an updated guideline for
 reporting systematic reviews. BMJ. 2021;372:n71.
 """
 
-from typing import Any, Optional
-from dataclasses import dataclass
+from typing import Any
 
-from ..constants import Severity, CertificationProfile
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ValidatorConfig
+from ..constants import CertificationProfile, Severity
+from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
-
 
 # PRISMA 2020 Checklist Items (27 items + abstract)
 PRISMA_2020_ITEMS = {
@@ -25,14 +23,12 @@ PRISMA_2020_ITEMS = {
         "description": "Identify the report as a systematic review",
         "required": True,
     },
-
     # Abstract
     "abstract_structured": {
         "number": 2,
         "description": "Structured summary including background, objectives, methods, results, conclusions",
         "required": True,
     },
-
     # Introduction
     "rationale": {
         "number": 3,
@@ -44,7 +40,6 @@ PRISMA_2020_ITEMS = {
         "description": "Provide explicit statement of objectives using PICO",
         "required": True,
     },
-
     # Methods
     "eligibility_criteria": {
         "number": 5,
@@ -107,7 +102,6 @@ PRISMA_2020_ITEMS = {
         "description": "Describe methods for assessing certainty (GRADE)",
         "required": True,
     },
-
     # Results
     "study_selection": {
         "number": 16,
@@ -156,7 +150,6 @@ PRISMA_2020_ITEMS = {
         "description": "Present certainty of evidence for each outcome",
         "required": True,
     },
-
     # Discussion
     "discussion_summary": {
         "number": 23,
@@ -173,7 +166,6 @@ PRISMA_2020_ITEMS = {
         "description": "Provide conclusions and implications",
         "required": True,
     },
-
     # Other
     "registration": {
         "number": 26,
@@ -212,7 +204,7 @@ PROFILE_REQUIRED_ITEMS = {
         "results_of_syntheses",
         "certainty_of_evidence",
     ],
-    CertificationProfile.GOLD: list(k for k, v in PRISMA_2020_ITEMS.items() if v["required"]),
+    CertificationProfile.GOLD: [k for k, v in PRISMA_2020_ITEMS.items() if v["required"]],
 }
 
 
@@ -231,7 +223,7 @@ class PRISMAChecklistValidator(Validator):
     description = "Validates PRISMA 2020 reporting checklist compliance"
     default_severity = Severity.WARN
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -262,11 +254,13 @@ class PRISMAChecklistValidator(Validator):
             item_data = prisma_data.get(item_key)
 
             if not item_data:
-                missing_required.append({
-                    "item": item_key,
-                    "number": item_info.get("number"),
-                    "description": item_info.get("description"),
-                })
+                missing_required.append(
+                    {
+                        "item": item_key,
+                        "number": item_info.get("number"),
+                        "description": item_info.get("description"),
+                    }
+                )
             else:
                 documented_items.append(item_key)
 
@@ -278,46 +272,56 @@ class PRISMAChecklistValidator(Validator):
                         missing_subfields.append(subfield)
 
                 if missing_subfields:
-                    incomplete_items.append({
-                        "item": item_key,
-                        "missing_subfields": missing_subfields,
-                    })
+                    incomplete_items.append(
+                        {
+                            "item": item_key,
+                            "missing_subfields": missing_subfields,
+                        }
+                    )
 
         # Generate appropriate error/warning messages
         if missing_required:
             if self.strict_mode:
-                errors.append({
-                    "issue": "Missing required PRISMA 2020 items",
-                    "missing_items": missing_required,
-                    "profile": profile.value,
-                })
+                errors.append(
+                    {
+                        "issue": "Missing required PRISMA 2020 items",
+                        "missing_items": missing_required,
+                        "profile": profile.value,
+                    }
+                )
             else:
-                warnings.append({
-                    "issue": "Missing recommended PRISMA 2020 items",
-                    "missing_items": missing_required,
-                    "profile": profile.value,
-                    "note": "Enable strict_mode to enforce as errors",
-                })
+                warnings.append(
+                    {
+                        "issue": "Missing recommended PRISMA 2020 items",
+                        "missing_items": missing_required,
+                        "profile": profile.value,
+                        "note": "Enable strict_mode to enforce as errors",
+                    }
+                )
 
         if incomplete_items:
-            warnings.append({
-                "issue": "Incomplete PRISMA 2020 items",
-                "incomplete_items": incomplete_items,
-                "note": "Consider documenting subfields for completeness",
-            })
+            warnings.append(
+                {
+                    "issue": "Incomplete PRISMA 2020 items",
+                    "incomplete_items": incomplete_items,
+                    "note": "Consider documenting subfields for completeness",
+                }
+            )
 
         # Check for PRISMA flow diagram data
         flow_data = prisma_data.get("study_selection", {})
         if not flow_data and profile in (CertificationProfile.SILVER, CertificationProfile.GOLD):
-            warnings.append({
-                "issue": "PRISMA flow diagram data not documented",
-                "required_fields": [
-                    "records_identified",
-                    "records_screened",
-                    "records_excluded",
-                    "studies_included",
-                ],
-            })
+            warnings.append(
+                {
+                    "issue": "PRISMA flow diagram data not documented",
+                    "required_fields": [
+                        "records_identified",
+                        "records_screened",
+                        "records_excluded",
+                        "studies_included",
+                    ],
+                }
+            )
 
         # Calculate compliance score
         total_required = len(required_items)
@@ -329,7 +333,9 @@ class PRISMAChecklistValidator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"PRISMA 2020 compliance: {compliance_score:.0f}% ({documented_count}/{total_required} items)"
                 if passed
@@ -418,6 +424,6 @@ def generate_prisma_checklist_report(
                 lines.append(f"    [{sub_status}] {subfield}")
 
     lines.append("")
-    lines.append(f"Compliance: {documented}/{total} ({documented/total*100:.0f}%)")
+    lines.append(f"Compliance: {documented}/{total} ({documented / total * 100:.0f}%)")
 
     return "\n".join(lines)

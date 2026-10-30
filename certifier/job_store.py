@@ -4,17 +4,16 @@ Provides persistent job storage that survives server restarts.
 """
 
 import json
+import os
+import queue
 import sqlite3
 import threading
-import queue
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from .constants import DEFAULT_DB_PATH, ENV_DB_PATH
-from .models import Job, JobStatus, CertificationProfile
-import os
+from .models import CertificationProfile, Job, JobStatus
 
 # Thread-safe lock for singleton initialization
 _singleton_lock = threading.Lock()
@@ -126,7 +125,7 @@ class JobStore:
     - Thread-safe operations
     """
 
-    def __init__(self, db_path: Optional[str] = None, pool_size: int = 5):
+    def __init__(self, db_path: str | None = None, pool_size: int = 5):
         self.db_path = Path(db_path or os.environ.get(ENV_DB_PATH, DEFAULT_DB_PATH))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), pool_size=pool_size)
@@ -206,7 +205,7 @@ class JobStore:
                     cursor.execute(sql)
                 cursor.execute(
                     "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
-                    (version, datetime.now(timezone.utc).isoformat())
+                    (version, datetime.now(UTC).isoformat()),
                 )
 
     def create(self, job: Job) -> Job:
@@ -221,29 +220,32 @@ class JobStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO jobs (
                     job_id, status, policy_id, profile, input_path,
                     output_bundle_id, error_message, created_at,
                     started_at, completed_at, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                job.job_id,
-                job.status.value,
-                job.policy_id,
-                job.profile.value,
-                job.input_path,
-                job.output_bundle_id,
-                job.error_message,
-                job.created_at.isoformat(),
-                job.started_at.isoformat() if job.started_at else None,
-                job.completed_at.isoformat() if job.completed_at else None,
-                json.dumps(job.metadata),
-            ))
+            """,
+                (
+                    job.job_id,
+                    job.status.value,
+                    job.policy_id,
+                    job.profile.value,
+                    job.input_path,
+                    job.output_bundle_id,
+                    job.error_message,
+                    job.created_at.isoformat(),
+                    job.started_at.isoformat() if job.started_at else None,
+                    job.completed_at.isoformat() if job.completed_at else None,
+                    json.dumps(job.metadata),
+                ),
+            )
 
         return job
 
-    def get(self, job_id: str) -> Optional[Job]:
+    def get(self, job_id: str) -> Job | None:
         """
         Get a job by ID.
 
@@ -255,10 +257,7 @@ class JobStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM jobs WHERE job_id = ?",
-                (job_id,)
-            )
+            cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
             row = cursor.fetchone()
 
             if row:
@@ -277,7 +276,8 @@ class JobStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE jobs SET
                     status = ?,
                     policy_id = ?,
@@ -289,18 +289,20 @@ class JobStore:
                     completed_at = ?,
                     metadata = ?
                 WHERE job_id = ?
-            """, (
-                job.status.value,
-                job.policy_id,
-                job.profile.value,
-                job.input_path,
-                job.output_bundle_id,
-                job.error_message,
-                job.started_at.isoformat() if job.started_at else None,
-                job.completed_at.isoformat() if job.completed_at else None,
-                json.dumps(job.metadata),
-                job.job_id,
-            ))
+            """,
+                (
+                    job.status.value,
+                    job.policy_id,
+                    job.profile.value,
+                    job.input_path,
+                    job.output_bundle_id,
+                    job.error_message,
+                    job.started_at.isoformat() if job.started_at else None,
+                    job.completed_at.isoformat() if job.completed_at else None,
+                    json.dumps(job.metadata),
+                    job.job_id,
+                ),
+            )
 
         return job
 
@@ -321,8 +323,8 @@ class JobStore:
 
     def list_jobs(
         self,
-        status: Optional[JobStatus] = None,
-        policy_id: Optional[str] = None,
+        status: JobStatus | None = None,
+        policy_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Job]:
@@ -360,7 +362,7 @@ class JobStore:
 
             return [self._row_to_job(row) for row in rows]
 
-    def count(self, status: Optional[JobStatus] = None) -> int:
+    def count(self, status: JobStatus | None = None) -> int:
         """
         Count jobs.
 
@@ -374,10 +376,7 @@ class JobStore:
             cursor = conn.cursor()
 
             if status:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM jobs WHERE status = ?",
-                    (status.value,)
-                )
+                cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = ?", (status.value,))
             else:
                 cursor.execute("SELECT COUNT(*) FROM jobs")
 
@@ -395,15 +394,18 @@ class JobStore:
         """
         from datetime import timedelta
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 DELETE FROM jobs
                 WHERE status IN ('completed', 'failed')
                 AND created_at < ?
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             return cursor.rowcount
 
     def close(self) -> None:
@@ -427,13 +429,15 @@ class JobStore:
             error_message=row["error_message"],
             created_at=datetime.fromisoformat(row["created_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"])
+            if row["completed_at"]
+            else None,
             metadata=json.loads(row["metadata"]),
         )
 
 
 # Global job store instance
-_job_store: Optional[JobStore] = None
+_job_store: JobStore | None = None
 
 
 def get_job_store() -> JobStore:
@@ -452,7 +456,7 @@ def get_job_store() -> JobStore:
     return _job_store
 
 
-def init_job_store(db_path: Optional[str] = None) -> JobStore:
+def init_job_store(db_path: str | None = None) -> JobStore:
     """
     Initialize and return the global job store (thread-safe).
 

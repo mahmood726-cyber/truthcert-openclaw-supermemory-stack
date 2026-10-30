@@ -9,33 +9,33 @@ import tarfile
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .constants import (
+    ATTEST_DIR,
+    AUDIT_LOG_FILE,
+    CAPSULE_DIR,
+    CLAIMS_FILE,
     DEFAULT_BUNDLE_DIR,
     ENV_BUNDLE_DIR,
     HASH_PREFIX,
     MANIFEST_FILE,
-    SCOPE_LOCK_FILE,
-    CLAIMS_FILE,
+    OUTPUTS_DIR,
     PROVENANCE_FILE,
-    AUDIT_LOG_FILE,
-    TELEMETRY_FILE,
-    SIGNATURE_FILE,
     PUBLIC_KEY_FILE,
     RECEIPT_FILE,
-    OUTPUTS_DIR,
-    CAPSULE_DIR,
-    ATTEST_DIR,
+    SCOPE_LOCK_FILE,
+    SIGNATURE_FILE,
+    TELEMETRY_FILE,
     BundleOutcome,
 )
 from .models import (
+    BundleManifest,
     NumericClaim,
     ScopeLock,
-    BundleManifest,
     ValidationSummary,
 )
-from .signing import sign_manifest, create_receipt
+from .signing import create_receipt, sign_manifest
 
 
 def get_bundle_dir() -> Path:
@@ -49,7 +49,7 @@ def compute_bundle_id(
     claims: list[NumericClaim],
     scope_lock: ScopeLock,
     policy_id: str,
-    claims_sha256: Optional[str] = None,
+    claims_sha256: str | None = None,
 ) -> str:
     """Derive a deterministic v2 full-payload ID or historical v1 claim ID."""
     # No new bundle may reuse a legacy ID after changing an unbound CI bound,
@@ -127,20 +127,20 @@ def write_provenance(
         )
 
         # Write claim-level provenance
-        for claim in claims:
-            f.write(
-                json.dumps(
-                    {
-                        "type": "claim",
-                        "claim_id": claim.claim_id,
-                        "claim_hash": claim.compute_hash(),
-                        "evidence_count": len(claim.evidence),
-                        "evidence_hashes": [e.content_hash for e in claim.evidence],
-                        "provenance": claim.provenance,
-                    }
-                )
-                + "\n"
+        f.writelines(
+            json.dumps(
+                {
+                    "type": "claim",
+                    "claim_id": claim.claim_id,
+                    "claim_hash": claim.compute_hash(),
+                    "evidence_count": len(claim.evidence),
+                    "evidence_hashes": [e.content_hash for e in claim.evidence],
+                    "provenance": claim.provenance,
+                }
             )
+            + "\n"
+            for claim in claims
+        )
 
 
 def write_manifest(
@@ -156,7 +156,7 @@ def write_manifest(
 def write_attestation(
     bundle_path: Path,
     manifest_data: dict[str, Any],
-    verification_url: Optional[str] = None,
+    verification_url: str | None = None,
 ) -> dict[str, Any]:
     """
     Sign the manifest and write attestation files.
@@ -201,10 +201,10 @@ def create_bundle(
     policy_id: str,
     validation_summary: ValidationSummary,
     validators: list[str],
-    model_metadata: Optional[dict[str, Any]] = None,
-    tool_metadata: Optional[dict[str, Any]] = None,
+    model_metadata: dict[str, Any] | None = None,
+    tool_metadata: dict[str, Any] | None = None,
     sign: bool = True,
-    verification_url: Optional[str] = None,
+    verification_url: str | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """
     Create a complete certification bundle.
@@ -220,7 +220,10 @@ def create_bundle(
     claim_bytes = "".join(c.model_dump_json() + "\n" for c in claims).encode("utf-8")
     expected_claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256(claim_bytes).hexdigest()}"
     bundle_id = compute_bundle_id(
-        claims, scope_lock, policy_id, claims_sha256=expected_claims_sha256,
+        claims,
+        scope_lock,
+        policy_id,
+        claims_sha256=expected_claims_sha256,
     )
 
     # Stage all artifacts privately: incomplete signed bundles must not be visible.
@@ -236,7 +239,9 @@ def create_bundle(
         # The historical bundle_id algorithm remains intact; v1 signed artifacts are
         # preserved, but cannot be promoted to complete-payload certification.
         write_claims_jsonl(bundle_path, claims)
-        claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256((bundle_path / CLAIMS_FILE).read_bytes()).hexdigest()}"
+        claims_sha256 = (
+            f"{HASH_PREFIX}{hashlib.sha256((bundle_path / CLAIMS_FILE).read_bytes()).hexdigest()}"
+        )
         if claims_sha256 != expected_claims_sha256:
             raise ValueError("Serialized claims bytes changed before signing")
 
@@ -351,9 +356,12 @@ def claims_payload_problems(bundle_path: Path, manifest: dict[str, Any]) -> list
     if manifest.get("version") != "tc-bundle-v2":
         return ["NONCERTIFYING: legacy manifest has no signed full claims payload digest"]
     expected = manifest.get("claims_sha256")
-    if (not isinstance(expected, str) or not expected.startswith(HASH_PREFIX)
-            or len(expected) != len(HASH_PREFIX) + 64
-            or any(c not in "0123456789abcdef" for c in expected[len(HASH_PREFIX):])):
+    if (
+        not isinstance(expected, str)
+        or not expected.startswith(HASH_PREFIX)
+        or len(expected) != len(HASH_PREFIX) + 64
+        or any(c not in "0123456789abcdef" for c in expected[len(HASH_PREFIX) :])
+    ):
         return ["Missing or invalid signed claims_sha256"]
     try:
         raw = (bundle_path / CLAIMS_FILE).read_bytes()
@@ -378,11 +386,13 @@ def claims_payload_problems(bundle_path: Path, manifest: dict[str, Any]) -> list
         scope = ScopeLock.model_validate(scope_data)
     except (OSError, ValueError, TypeError):
         return ["Cannot reconstruct signed claim identities and scope"]
-    if (scope.policy_id != manifest.get("policy_id")
-            or scope.profile.value != manifest.get("profile")):
+    if scope.policy_id != manifest.get("policy_id") or scope.profile.value != manifest.get(
+        "profile"
+    ):
         return ["Signed policy/profile does not match scope lock"]
-    if compute_bundle_id(parsed_claims, scope, scope.policy_id,
-                         claims_sha256=expected) != manifest.get("bundle_id"):
+    if compute_bundle_id(
+        parsed_claims, scope, scope.policy_id, claims_sha256=expected
+    ) != manifest.get("bundle_id"):
         return ["Signed bundle_id disagrees with claims and scope"]
     return []
 

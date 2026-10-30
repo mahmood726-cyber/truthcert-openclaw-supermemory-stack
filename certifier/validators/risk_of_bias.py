@@ -15,14 +15,13 @@ References:
 - PROBAST: Wolff RF, et al. Ann Intern Med. 2019;170(1):51-58
 """
 
-from typing import Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, ClassVar
 
-from ..constants import Severity, CertificationProfile
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ValidatorConfig
+from ..constants import CertificationProfile, Severity
+from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
-
 
 # =============================================================================
 # Common Risk of Bias Enums
@@ -31,6 +30,7 @@ from .base import Validator, ValidatorRegistry
 
 class ROB2Judgment(str, Enum):
     """ROB 2 judgment levels for RCTs."""
+
     LOW = "low"
     SOME_CONCERNS = "some_concerns"
     HIGH = "high"
@@ -38,6 +38,7 @@ class ROB2Judgment(str, Enum):
 
 class ROBINSIJudgment(str, Enum):
     """ROBINS-I judgment levels for non-randomized studies."""
+
     LOW = "low"
     MODERATE = "moderate"
     SERIOUS = "serious"
@@ -47,6 +48,7 @@ class ROBINSIJudgment(str, Enum):
 
 class QUADAS2Judgment(str, Enum):
     """QUADAS-2 judgment levels for diagnostic accuracy studies."""
+
     LOW = "low"
     HIGH = "high"
     UNCLEAR = "unclear"
@@ -54,6 +56,7 @@ class QUADAS2Judgment(str, Enum):
 
 class PROBASTJudgment(str, Enum):
     """PROBAST judgment levels for prediction model studies."""
+
     LOW = "low"
     HIGH = "high"
     UNCLEAR = "unclear"
@@ -333,10 +336,11 @@ PROBAST_DOMAINS = {
 @dataclass
 class ROB2Assessment:
     """Assessment data for a single study using ROB 2."""
+
     study_id: str
     domain_judgments: dict[str, ROB2Judgment] = field(default_factory=dict)
     domain_support: dict[str, str] = field(default_factory=dict)
-    overall_judgment: Optional[ROB2Judgment] = None
+    overall_judgment: ROB2Judgment | None = None
     overall_support: str = ""
 
 
@@ -357,9 +361,15 @@ class ROB2Validator(Validator):
     description = "Validates ROB 2 risk of bias assessments for RCTs"
     default_severity = Severity.WARN
 
-    DOMAIN_KEYS = ["randomization", "deviations", "missing_data", "measurement", "selection"]
+    DOMAIN_KEYS: ClassVar[list[str]] = [
+        "randomization",
+        "deviations",
+        "missing_data",
+        "measurement",
+        "selection",
+    ]
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -381,10 +391,12 @@ class ROB2Validator(Validator):
         if not rob2_data:
             # Check if ROB 2 is required for this profile
             if scope_lock.profile in (CertificationProfile.SILVER, CertificationProfile.GOLD):
-                warnings.append({
-                    "issue": "No ROB 2 assessments provided",
-                    "recommendation": "Include risk of bias assessments for RCTs",
-                })
+                warnings.append(
+                    {
+                        "issue": "No ROB 2 assessments provided",
+                        "recommendation": "Include risk of bias assessments for RCTs",
+                    }
+                )
 
             return ValidatorResult(
                 validator_name=self.name,
@@ -417,7 +429,9 @@ class ROB2Validator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"ROB 2: {complete_assessments}/{studies_assessed} complete assessments"
                 if passed
@@ -451,63 +465,75 @@ class ROB2Validator(Validator):
             if domain_key not in domain_judgments:
                 is_complete = False
                 if self.strict_mode:
-                    errors.append({
-                        "study_id": study_id,
-                        "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                        }
+                    )
                 else:
-                    warnings.append({
-                        "study_id": study_id,
-                        "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                    })
+                    warnings.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                        }
+                    )
             else:
                 # Validate judgment value
                 judgment = domain_judgments[domain_key]
                 valid_judgments = [j.value for j in ROB2Judgment]
                 if judgment not in valid_judgments:
-                    errors.append({
-                        "study_id": study_id,
-                        "domain": domain_key,
-                        "issue": f"Invalid judgment '{judgment}'",
-                        "valid_values": valid_judgments,
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "domain": domain_key,
+                            "issue": f"Invalid judgment '{judgment}'",
+                            "valid_values": valid_judgments,
+                        }
+                    )
 
             # Check for supporting text
             if self.require_support and domain_key not in domain_support:
-                warnings.append({
-                    "study_id": study_id,
-                    "domain": domain_key,
-                    "issue": "Missing supporting text for judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "domain": domain_key,
+                        "issue": "Missing supporting text for judgment",
+                    }
+                )
 
         # Validate overall judgment
         if overall is None:
             is_complete = False
             if self.strict_mode:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall risk of bias judgment",
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall risk of bias judgment",
+                    }
+                )
             else:
-                warnings.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall risk of bias judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall risk of bias judgment",
+                    }
+                )
         else:
             valid_judgments = [j.value for j in ROB2Judgment]
             if overall not in valid_judgments:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": f"Invalid overall judgment '{overall}'",
-                    "valid_values": valid_judgments,
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": f"Invalid overall judgment '{overall}'",
+                        "valid_values": valid_judgments,
+                    }
+                )
 
             # Check overall is consistent with domain judgments
-            self._check_overall_domain_consistency(
-                study_id, overall, domain_judgments, warnings
-            )
+            self._check_overall_domain_consistency(study_id, overall, domain_judgments, warnings)
 
         return errors, warnings, is_complete
 
@@ -542,13 +568,15 @@ class ROB2Validator(Validator):
             expected_overall = ROB2Judgment.LOW.value
 
         if expected_overall and overall != expected_overall:
-            warnings.append({
-                "study_id": study_id,
-                "issue": "Overall judgment may be inconsistent with domain judgments",
-                "overall": overall,
-                "expected": expected_overall,
-                "domain_judgments": domain_judgments,
-            })
+            warnings.append(
+                {
+                    "study_id": study_id,
+                    "issue": "Overall judgment may be inconsistent with domain judgments",
+                    "overall": overall,
+                    "expected": expected_overall,
+                    "domain_judgments": domain_judgments,
+                }
+            )
 
     def _check_overall_consistency(self, rob2_data: dict) -> list[dict]:
         """Check consistency across all study assessments."""
@@ -565,11 +593,13 @@ class ROB2Validator(Validator):
         if total > 0:
             high_proportion = overall_counts["high"] / total
             if high_proportion > 0.8:
-                warnings.append({
-                    "issue": "Very high proportion of studies at high risk of bias",
-                    "high_risk_proportion": round(high_proportion, 2),
-                    "recommendation": "Consider impact on certainty of evidence",
-                })
+                warnings.append(
+                    {
+                        "issue": "Very high proportion of studies at high risk of bias",
+                        "high_risk_proportion": round(high_proportion, 2),
+                        "recommendation": "Consider impact on certainty of evidence",
+                    }
+                )
 
         return warnings
 
@@ -582,10 +612,11 @@ class ROB2Validator(Validator):
 @dataclass
 class ROBINSIAssessment:
     """Assessment data for a single study using ROBINS-I."""
+
     study_id: str
     domain_judgments: dict[str, ROBINSIJudgment] = field(default_factory=dict)
     domain_support: dict[str, str] = field(default_factory=dict)
-    overall_judgment: Optional[ROBINSIJudgment] = None
+    overall_judgment: ROBINSIJudgment | None = None
     overall_support: str = ""
 
 
@@ -605,12 +636,17 @@ class ROBINSIValidator(Validator):
     description = "Validates ROBINS-I risk of bias assessments for non-randomized studies"
     default_severity = Severity.WARN
 
-    DOMAIN_KEYS = [
-        "confounding", "selection", "classification", "deviations",
-        "missing_data", "measurement", "reported_result"
+    DOMAIN_KEYS: ClassVar[list[str]] = [
+        "confounding",
+        "selection",
+        "classification",
+        "deviations",
+        "missing_data",
+        "measurement",
+        "reported_result",
     ]
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -632,11 +668,16 @@ class ROBINSIValidator(Validator):
         if not robinsi_data:
             # ROBINS-I is only needed for non-randomized studies
             has_nrs = scope_lock.metadata.get("has_nonrandomized_studies", False)
-            if has_nrs and scope_lock.profile in (CertificationProfile.SILVER, CertificationProfile.GOLD):
-                warnings.append({
-                    "issue": "Non-randomized studies present but no ROBINS-I assessments",
-                    "recommendation": "Include ROBINS-I assessments for non-randomized studies",
-                })
+            if has_nrs and scope_lock.profile in (
+                CertificationProfile.SILVER,
+                CertificationProfile.GOLD,
+            ):
+                warnings.append(
+                    {
+                        "issue": "Non-randomized studies present but no ROBINS-I assessments",
+                        "recommendation": "Include ROBINS-I assessments for non-randomized studies",
+                    }
+                )
 
             return ValidatorResult(
                 validator_name=self.name,
@@ -669,7 +710,9 @@ class ROBINSIValidator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"ROBINS-I: {complete_assessments}/{studies_assessed} complete assessments"
                 if passed
@@ -705,61 +748,73 @@ class ROBINSIValidator(Validator):
             if domain_key not in domain_judgments:
                 is_complete = False
                 if self.strict_mode:
-                    errors.append({
-                        "study_id": study_id,
-                        "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                        }
+                    )
                 else:
-                    warnings.append({
-                        "study_id": study_id,
-                        "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                    })
+                    warnings.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing domain assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                        }
+                    )
             else:
                 # Validate judgment value
                 judgment = domain_judgments[domain_key]
                 if judgment not in valid_judgments:
-                    errors.append({
-                        "study_id": study_id,
-                        "domain": domain_key,
-                        "issue": f"Invalid judgment '{judgment}'",
-                        "valid_values": valid_judgments,
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "domain": domain_key,
+                            "issue": f"Invalid judgment '{judgment}'",
+                            "valid_values": valid_judgments,
+                        }
+                    )
 
             # Check for supporting text
             if self.require_support and domain_key not in domain_support:
-                warnings.append({
-                    "study_id": study_id,
-                    "domain": domain_key,
-                    "issue": "Missing supporting text for judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "domain": domain_key,
+                        "issue": "Missing supporting text for judgment",
+                    }
+                )
 
         # Validate overall judgment
         if overall is None:
             is_complete = False
             if self.strict_mode:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall risk of bias judgment",
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall risk of bias judgment",
+                    }
+                )
             else:
-                warnings.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall risk of bias judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall risk of bias judgment",
+                    }
+                )
         else:
             if overall not in valid_judgments:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": f"Invalid overall judgment '{overall}'",
-                    "valid_values": valid_judgments,
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": f"Invalid overall judgment '{overall}'",
+                        "valid_values": valid_judgments,
+                    }
+                )
 
             # Check overall is consistent with domain judgments
-            self._check_overall_domain_consistency(
-                study_id, overall, domain_judgments, warnings
-            )
+            self._check_overall_domain_consistency(study_id, overall, domain_judgments, warnings)
 
         return errors, warnings, is_complete
 
@@ -802,13 +857,15 @@ class ROBINSIValidator(Validator):
             expected_overall = ROBINSIJudgment.NO_INFORMATION.value
 
         if expected_overall and overall != expected_overall:
-            warnings.append({
-                "study_id": study_id,
-                "issue": "Overall judgment may be inconsistent with domain judgments",
-                "overall": overall,
-                "expected": expected_overall,
-                "domain_judgments": domain_judgments,
-            })
+            warnings.append(
+                {
+                    "study_id": study_id,
+                    "issue": "Overall judgment may be inconsistent with domain judgments",
+                    "overall": overall,
+                    "expected": expected_overall,
+                    "domain_judgments": domain_judgments,
+                }
+            )
 
     def _check_overall_consistency(self, robinsi_data: dict) -> list[dict]:
         """Check consistency across all study assessments."""
@@ -825,11 +882,13 @@ class ROBINSIValidator(Validator):
         if total > 0:
             critical_serious = (overall_counts["critical"] + overall_counts["serious"]) / total
             if critical_serious > 0.7:
-                warnings.append({
-                    "issue": "High proportion of studies at serious/critical risk of bias",
-                    "critical_serious_proportion": round(critical_serious, 2),
-                    "recommendation": "Consider including only moderate/low risk studies or adjusting conclusions",
-                })
+                warnings.append(
+                    {
+                        "issue": "High proportion of studies at serious/critical risk of bias",
+                        "critical_serious_proportion": round(critical_serious, 2),
+                        "recommendation": "Consider including only moderate/low risk studies or adjusting conclusions",
+                    }
+                )
 
         return warnings
 
@@ -842,6 +901,7 @@ class ROBINSIValidator(Validator):
 @dataclass
 class QUADAS2Assessment:
     """Assessment data for a single study using QUADAS-2."""
+
     study_id: str
     domain_risk_of_bias: dict[str, QUADAS2Judgment] = field(default_factory=dict)
     domain_applicability: dict[str, QUADAS2Judgment] = field(default_factory=dict)
@@ -865,9 +925,14 @@ class QUADAS2Validator(Validator):
     description = "Validates QUADAS-2 assessments for diagnostic accuracy studies"
     default_severity = Severity.WARN
 
-    DOMAIN_KEYS = ["patient_selection", "index_test", "reference_standard", "flow_timing"]
+    DOMAIN_KEYS: ClassVar[list[str]] = [
+        "patient_selection",
+        "index_test",
+        "reference_standard",
+        "flow_timing",
+    ]
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -889,11 +954,16 @@ class QUADAS2Validator(Validator):
         if not quadas2_data:
             # QUADAS-2 is only needed for diagnostic accuracy studies
             is_dta_review = scope_lock.metadata.get("is_diagnostic_accuracy_review", False)
-            if is_dta_review and scope_lock.profile in (CertificationProfile.SILVER, CertificationProfile.GOLD):
-                warnings.append({
-                    "issue": "Diagnostic accuracy review but no QUADAS-2 assessments",
-                    "recommendation": "Include QUADAS-2 assessments for diagnostic accuracy studies",
-                })
+            if is_dta_review and scope_lock.profile in (
+                CertificationProfile.SILVER,
+                CertificationProfile.GOLD,
+            ):
+                warnings.append(
+                    {
+                        "issue": "Diagnostic accuracy review but no QUADAS-2 assessments",
+                        "recommendation": "Include QUADAS-2 assessments for diagnostic accuracy studies",
+                    }
+                )
 
             return ValidatorResult(
                 validator_name=self.name,
@@ -925,7 +995,9 @@ class QUADAS2Validator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"QUADAS-2: {complete_assessments}/{studies_assessed} complete assessments"
                 if passed
@@ -963,84 +1035,109 @@ class QUADAS2Validator(Validator):
             if domain_key not in risk_of_bias:
                 is_complete = False
                 if self.strict_mode:
-                    errors.append({
-                        "study_id": study_id,
-                        "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                        "assessment_type": "risk_of_bias",
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                            "assessment_type": "risk_of_bias",
+                        }
+                    )
                 else:
-                    warnings.append({
-                        "study_id": study_id,
-                        "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                    })
+                    warnings.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                        }
+                    )
             else:
                 judgment = risk_of_bias[domain_key]
                 if judgment not in valid_judgments:
-                    errors.append({
-                        "study_id": study_id,
-                        "domain": domain_key,
-                        "assessment_type": "risk_of_bias",
-                        "issue": f"Invalid judgment '{judgment}'",
-                        "valid_values": valid_judgments,
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "domain": domain_key,
+                            "assessment_type": "risk_of_bias",
+                            "issue": f"Invalid judgment '{judgment}'",
+                            "valid_values": valid_judgments,
+                        }
+                    )
 
             # Check applicability (except for flow_timing which has no applicability)
             if domain_info.get("has_applicability", True):
                 if domain_key not in applicability:
                     is_complete = False
                     if self.strict_mode:
-                        errors.append({
-                            "study_id": study_id,
-                            "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
-                            "domain": domain_key,
-                            "assessment_type": "applicability",
-                        })
+                        errors.append(
+                            {
+                                "study_id": study_id,
+                                "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
+                                "domain": domain_key,
+                                "assessment_type": "applicability",
+                            }
+                        )
                     else:
-                        warnings.append({
-                            "study_id": study_id,
-                            "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
-                            "domain": domain_key,
-                        })
+                        warnings.append(
+                            {
+                                "study_id": study_id,
+                                "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
+                                "domain": domain_key,
+                            }
+                        )
                 else:
                     judgment = applicability[domain_key]
                     if judgment not in valid_judgments:
-                        errors.append({
-                            "study_id": study_id,
-                            "domain": domain_key,
-                            "assessment_type": "applicability",
-                            "issue": f"Invalid judgment '{judgment}'",
-                            "valid_values": valid_judgments,
-                        })
+                        errors.append(
+                            {
+                                "study_id": study_id,
+                                "domain": domain_key,
+                                "assessment_type": "applicability",
+                                "issue": f"Invalid judgment '{judgment}'",
+                                "valid_values": valid_judgments,
+                            }
+                        )
 
             # Check for supporting text
             if self.require_support and domain_key not in domain_support:
-                warnings.append({
-                    "study_id": study_id,
-                    "domain": domain_key,
-                    "issue": "Missing supporting text for judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "domain": domain_key,
+                        "issue": "Missing supporting text for judgment",
+                    }
+                )
 
         return errors, warnings, is_complete
 
     def _compute_summary(self, quadas2_data: dict) -> dict:
         """Compute summary statistics across all studies."""
         summary = {
-            "risk_of_bias": {domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.DOMAIN_KEYS},
-            "applicability": {domain: {"low": 0, "high": 0, "unclear": 0}
-                            for domain in self.DOMAIN_KEYS if QUADAS2_DOMAINS.get(domain, {}).get("has_applicability", True)},
+            "risk_of_bias": {
+                domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.DOMAIN_KEYS
+            },
+            "applicability": {
+                domain: {"low": 0, "high": 0, "unclear": 0}
+                for domain in self.DOMAIN_KEYS
+                if QUADAS2_DOMAINS.get(domain, {}).get("has_applicability", True)
+            },
         }
 
         for assessment in quadas2_data.values():
             # Risk of bias
             for domain, judgment in assessment.get("domain_risk_of_bias", {}).items():
-                if domain in summary["risk_of_bias"] and judgment in summary["risk_of_bias"][domain]:
+                if (
+                    domain in summary["risk_of_bias"]
+                    and judgment in summary["risk_of_bias"][domain]
+                ):
                     summary["risk_of_bias"][domain][judgment] += 1
 
             # Applicability
             for domain, judgment in assessment.get("domain_applicability", {}).items():
-                if domain in summary["applicability"] and judgment in summary["applicability"][domain]:
+                if (
+                    domain in summary["applicability"]
+                    and judgment in summary["applicability"][domain]
+                ):
                     summary["applicability"][domain][judgment] += 1
 
         return summary
@@ -1054,12 +1151,13 @@ class QUADAS2Validator(Validator):
 @dataclass
 class PROBASTAssessment:
     """Assessment data for a single study using PROBAST."""
+
     study_id: str
     domain_risk_of_bias: dict[str, PROBASTJudgment] = field(default_factory=dict)
     domain_applicability: dict[str, PROBASTJudgment] = field(default_factory=dict)
     domain_support: dict[str, str] = field(default_factory=dict)
-    overall_risk_of_bias: Optional[PROBASTJudgment] = None
-    overall_applicability: Optional[PROBASTJudgment] = None
+    overall_risk_of_bias: PROBASTJudgment | None = None
+    overall_applicability: PROBASTJudgment | None = None
 
 
 @ValidatorRegistry.register
@@ -1080,10 +1178,14 @@ class PROBASTValidator(Validator):
     description = "Validates PROBAST assessments for prediction model studies"
     default_severity = Severity.WARN
 
-    DOMAIN_KEYS = ["participants", "predictors", "outcome", "analysis"]
-    APPLICABILITY_DOMAINS = ["participants", "predictors", "outcome"]  # Analysis has no applicability
+    DOMAIN_KEYS: ClassVar[list[str]] = ["participants", "predictors", "outcome", "analysis"]
+    APPLICABILITY_DOMAINS: ClassVar[list[str]] = [
+        "participants",
+        "predictors",
+        "outcome",
+    ]  # Analysis has no applicability
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -1105,11 +1207,16 @@ class PROBASTValidator(Validator):
         if not probast_data:
             # PROBAST is only needed for prediction model studies
             is_prediction_review = scope_lock.metadata.get("is_prediction_model_review", False)
-            if is_prediction_review and scope_lock.profile in (CertificationProfile.SILVER, CertificationProfile.GOLD):
-                warnings.append({
-                    "issue": "Prediction model review but no PROBAST assessments",
-                    "recommendation": "Include PROBAST assessments for prediction model studies",
-                })
+            if is_prediction_review and scope_lock.profile in (
+                CertificationProfile.SILVER,
+                CertificationProfile.GOLD,
+            ):
+                warnings.append(
+                    {
+                        "issue": "Prediction model review but no PROBAST assessments",
+                        "recommendation": "Include PROBAST assessments for prediction model studies",
+                    }
+                )
 
             return ValidatorResult(
                 validator_name=self.name,
@@ -1141,7 +1248,9 @@ class PROBASTValidator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"PROBAST: {complete_assessments}/{studies_assessed} complete assessments"
                 if passed
@@ -1181,109 +1290,139 @@ class PROBASTValidator(Validator):
             if domain_key not in risk_of_bias:
                 is_complete = False
                 if self.strict_mode:
-                    errors.append({
-                        "study_id": study_id,
-                        "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                        "assessment_type": "risk_of_bias",
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                            "assessment_type": "risk_of_bias",
+                        }
+                    )
                 else:
-                    warnings.append({
-                        "study_id": study_id,
-                        "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
-                        "domain": domain_key,
-                    })
+                    warnings.append(
+                        {
+                            "study_id": study_id,
+                            "issue": f"Missing risk of bias assessment: {domain_info.get('name', domain_key)}",
+                            "domain": domain_key,
+                        }
+                    )
             else:
                 judgment = risk_of_bias[domain_key]
                 if judgment not in valid_judgments:
-                    errors.append({
-                        "study_id": study_id,
-                        "domain": domain_key,
-                        "assessment_type": "risk_of_bias",
-                        "issue": f"Invalid judgment '{judgment}'",
-                        "valid_values": valid_judgments,
-                    })
+                    errors.append(
+                        {
+                            "study_id": study_id,
+                            "domain": domain_key,
+                            "assessment_type": "risk_of_bias",
+                            "issue": f"Invalid judgment '{judgment}'",
+                            "valid_values": valid_judgments,
+                        }
+                    )
 
             # Check applicability (except for analysis domain)
             if domain_key in self.APPLICABILITY_DOMAINS:
                 if domain_key not in applicability:
                     is_complete = False
                     if self.strict_mode:
-                        errors.append({
-                            "study_id": study_id,
-                            "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
-                            "domain": domain_key,
-                            "assessment_type": "applicability",
-                        })
+                        errors.append(
+                            {
+                                "study_id": study_id,
+                                "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
+                                "domain": domain_key,
+                                "assessment_type": "applicability",
+                            }
+                        )
                     else:
-                        warnings.append({
-                            "study_id": study_id,
-                            "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
-                            "domain": domain_key,
-                        })
+                        warnings.append(
+                            {
+                                "study_id": study_id,
+                                "issue": f"Missing applicability concern: {domain_info.get('name', domain_key)}",
+                                "domain": domain_key,
+                            }
+                        )
                 else:
                     judgment = applicability[domain_key]
                     if judgment not in valid_judgments:
-                        errors.append({
-                            "study_id": study_id,
-                            "domain": domain_key,
-                            "assessment_type": "applicability",
-                            "issue": f"Invalid judgment '{judgment}'",
-                            "valid_values": valid_judgments,
-                        })
+                        errors.append(
+                            {
+                                "study_id": study_id,
+                                "domain": domain_key,
+                                "assessment_type": "applicability",
+                                "issue": f"Invalid judgment '{judgment}'",
+                                "valid_values": valid_judgments,
+                            }
+                        )
 
             # Check for supporting text
             if self.require_support and domain_key not in domain_support:
-                warnings.append({
-                    "study_id": study_id,
-                    "domain": domain_key,
-                    "issue": "Missing supporting text for judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "domain": domain_key,
+                        "issue": "Missing supporting text for judgment",
+                    }
+                )
 
         # Validate overall judgments
         if overall_rob is None:
             is_complete = False
             if self.strict_mode:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall risk of bias judgment",
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall risk of bias judgment",
+                    }
+                )
             else:
-                warnings.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall risk of bias judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall risk of bias judgment",
+                    }
+                )
         else:
             if overall_rob not in valid_judgments:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": f"Invalid overall risk of bias judgment '{overall_rob}'",
-                    "valid_values": valid_judgments,
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": f"Invalid overall risk of bias judgment '{overall_rob}'",
+                        "valid_values": valid_judgments,
+                    }
+                )
             # Check consistency
-            self._check_overall_consistency(study_id, overall_rob, risk_of_bias, warnings, "risk_of_bias")
+            self._check_overall_consistency(
+                study_id, overall_rob, risk_of_bias, warnings, "risk_of_bias"
+            )
 
         if overall_app is None:
             is_complete = False
             if self.strict_mode:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall applicability judgment",
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall applicability judgment",
+                    }
+                )
             else:
-                warnings.append({
-                    "study_id": study_id,
-                    "issue": "Missing overall applicability judgment",
-                })
+                warnings.append(
+                    {
+                        "study_id": study_id,
+                        "issue": "Missing overall applicability judgment",
+                    }
+                )
         else:
             if overall_app not in valid_judgments:
-                errors.append({
-                    "study_id": study_id,
-                    "issue": f"Invalid overall applicability judgment '{overall_app}'",
-                    "valid_values": valid_judgments,
-                })
+                errors.append(
+                    {
+                        "study_id": study_id,
+                        "issue": f"Invalid overall applicability judgment '{overall_app}'",
+                        "valid_values": valid_judgments,
+                    }
+                )
             # Check consistency
-            self._check_overall_consistency(study_id, overall_app, applicability, warnings, "applicability")
+            self._check_overall_consistency(
+                study_id, overall_app, applicability, warnings, "applicability"
+            )
 
         return errors, warnings, is_complete
 
@@ -1319,19 +1458,25 @@ class PROBASTValidator(Validator):
             expected_overall = PROBASTJudgment.UNCLEAR.value
 
         if expected_overall and overall != expected_overall:
-            warnings.append({
-                "study_id": study_id,
-                "issue": f"Overall {assessment_type} judgment may be inconsistent with domain judgments",
-                "overall": overall,
-                "expected": expected_overall,
-                "domain_judgments": domain_judgments,
-            })
+            warnings.append(
+                {
+                    "study_id": study_id,
+                    "issue": f"Overall {assessment_type} judgment may be inconsistent with domain judgments",
+                    "overall": overall,
+                    "expected": expected_overall,
+                    "domain_judgments": domain_judgments,
+                }
+            )
 
     def _compute_summary(self, probast_data: dict) -> dict:
         """Compute summary statistics across all studies."""
         summary = {
-            "risk_of_bias": {domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.DOMAIN_KEYS},
-            "applicability": {domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.APPLICABILITY_DOMAINS},
+            "risk_of_bias": {
+                domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.DOMAIN_KEYS
+            },
+            "applicability": {
+                domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.APPLICABILITY_DOMAINS
+            },
             "overall_risk_of_bias": {"low": 0, "high": 0, "unclear": 0},
             "overall_applicability": {"low": 0, "high": 0, "unclear": 0},
         }
@@ -1339,12 +1484,18 @@ class PROBASTValidator(Validator):
         for assessment in probast_data.values():
             # Domain risk of bias
             for domain, judgment in assessment.get("domain_risk_of_bias", {}).items():
-                if domain in summary["risk_of_bias"] and judgment in summary["risk_of_bias"][domain]:
+                if (
+                    domain in summary["risk_of_bias"]
+                    and judgment in summary["risk_of_bias"][domain]
+                ):
                     summary["risk_of_bias"][domain][judgment] += 1
 
             # Domain applicability
             for domain, judgment in assessment.get("domain_applicability", {}).items():
-                if domain in summary["applicability"] and judgment in summary["applicability"][domain]:
+                if (
+                    domain in summary["applicability"]
+                    and judgment in summary["applicability"][domain]
+                ):
                     summary["applicability"][domain][judgment] += 1
 
             # Overall
@@ -1367,8 +1518,8 @@ class PROBASTValidator(Validator):
 def get_rob2_template() -> dict:
     """Get a template for ROB 2 assessment data."""
     return {
-        "domain_judgments": {domain: None for domain in ROB2_DOMAINS.keys()},
-        "domain_support": {domain: "" for domain in ROB2_DOMAINS.keys()},
+        "domain_judgments": {domain: None for domain in ROB2_DOMAINS},
+        "domain_support": {domain: "" for domain in ROB2_DOMAINS},
         "overall_judgment": None,
         "overall_support": "",
     }
@@ -1377,8 +1528,8 @@ def get_rob2_template() -> dict:
 def get_robinsi_template() -> dict:
     """Get a template for ROBINS-I assessment data."""
     return {
-        "domain_judgments": {domain: None for domain in ROBINSI_DOMAINS.keys()},
-        "domain_support": {domain: "" for domain in ROBINSI_DOMAINS.keys()},
+        "domain_judgments": {domain: None for domain in ROBINSI_DOMAINS},
+        "domain_support": {domain: "" for domain in ROBINSI_DOMAINS},
         "overall_judgment": None,
         "overall_support": "",
     }
@@ -1386,21 +1537,25 @@ def get_robinsi_template() -> dict:
 
 def get_quadas2_template() -> dict:
     """Get a template for QUADAS-2 assessment data."""
-    domains_with_applicability = [k for k, v in QUADAS2_DOMAINS.items() if v.get("has_applicability", True)]
+    domains_with_applicability = [
+        k for k, v in QUADAS2_DOMAINS.items() if v.get("has_applicability", True)
+    ]
     return {
-        "domain_risk_of_bias": {domain: None for domain in QUADAS2_DOMAINS.keys()},
+        "domain_risk_of_bias": {domain: None for domain in QUADAS2_DOMAINS},
         "domain_applicability": {domain: None for domain in domains_with_applicability},
-        "domain_support": {domain: "" for domain in QUADAS2_DOMAINS.keys()},
+        "domain_support": {domain: "" for domain in QUADAS2_DOMAINS},
     }
 
 
 def get_probast_template() -> dict:
     """Get a template for PROBAST assessment data."""
-    applicability_domains = [k for k, v in PROBAST_DOMAINS.items() if v.get("has_applicability", True)]
+    applicability_domains = [
+        k for k, v in PROBAST_DOMAINS.items() if v.get("has_applicability", True)
+    ]
     return {
-        "domain_risk_of_bias": {domain: None for domain in PROBAST_DOMAINS.keys()},
+        "domain_risk_of_bias": {domain: None for domain in PROBAST_DOMAINS},
         "domain_applicability": {domain: None for domain in applicability_domains},
-        "domain_support": {domain: "" for domain in PROBAST_DOMAINS.keys()},
+        "domain_support": {domain: "" for domain in PROBAST_DOMAINS},
         "overall_risk_of_bias": None,
         "overall_applicability": None,
     }
@@ -1461,9 +1616,7 @@ def generate_rob_summary_table(
                 return "+"
             elif j_lower in ("high", "critical", "serious"):
                 return "-"
-            elif j_lower in ("some_concerns", "moderate"):
-                return "?"
-            elif j_lower == "unclear":
+            elif j_lower in ("some_concerns", "moderate") or j_lower == "unclear":
                 return "?"
             elif j_lower == "no_information":
                 return "NI"
@@ -1472,10 +1625,16 @@ def generate_rob_summary_table(
         domain_symbols = [symbol(judgments.get(d)) for d in domains]
         overall_symbol = symbol(overall)
 
-        row = f"{study_id[:20]:<20} | " + " | ".join(f"{s:<3}" for s in domain_symbols) + f" | {overall_symbol}"
+        row = (
+            f"{study_id[:20]:<20} | "
+            + " | ".join(f"{s:<3}" for s in domain_symbols)
+            + f" | {overall_symbol}"
+        )
         lines.append(row)
 
     lines.append("")
-    lines.append("Legend: + = Low risk, - = High risk, ? = Some concerns/Unclear, NI = No information")
+    lines.append(
+        "Legend: + = Low risk, - = High risk, ? = Some concerns/Unclear, NI = No information"
+    )
 
     return "\n".join(lines)

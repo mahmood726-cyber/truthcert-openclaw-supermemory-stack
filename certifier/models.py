@@ -11,12 +11,11 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from .constants import (
+    HASH_PREFIX,
     BundleOutcome,
     CertificationProfile,
-    HASH_PREFIX,
     Severity,
 )
-
 
 # =============================================================================
 # Enums
@@ -25,6 +24,7 @@ from .constants import (
 
 class ClaimType(str, Enum):
     """Types of numeric claims."""
+
     # General types
     EFFECT_SIZE = "effect_size"
     HETEROGENEITY = "heterogeneity"
@@ -36,13 +36,13 @@ class ClaimType(str, Enum):
     CUSTOM = "custom"
 
     # Specific effect size measures
-    RISK_RATIO = "risk_ratio"              # RR
-    ODDS_RATIO = "odds_ratio"              # OR
-    HAZARD_RATIO = "hazard_ratio"          # HR
-    MEAN_DIFFERENCE = "mean_difference"     # MD
+    RISK_RATIO = "risk_ratio"  # RR
+    ODDS_RATIO = "odds_ratio"  # OR
+    HAZARD_RATIO = "hazard_ratio"  # HR
+    MEAN_DIFFERENCE = "mean_difference"  # MD
     STANDARDIZED_MEAN_DIFFERENCE = "standardized_mean_difference"  # SMD/Cohen's d
     NUMBER_NEEDED_TO_TREAT = "number_needed_to_treat"  # NNT
-    NUMBER_NEEDED_TO_HARM = "number_needed_to_harm"    # NNH
+    NUMBER_NEEDED_TO_HARM = "number_needed_to_harm"  # NNH
 
     # Risk/rate measures
     ABSOLUTE_RISK = "absolute_risk"
@@ -82,25 +82,28 @@ class ClaimType(str, Enum):
     RISK_OF_BIAS = "risk_of_bias"
 
     # Network Meta-Analysis (NMA) specific
-    NMA_SUCRA = "nma_sucra"                    # Surface Under Cumulative Ranking
-    NMA_P_SCORE = "nma_p_score"                # P-score (frequentist SUCRA)
-    NMA_MEAN_RANK = "nma_mean_rank"            # Mean treatment rank
-    NMA_BEST_PROBABILITY = "nma_best_prob"     # Probability of being best
+    NMA_SUCRA = "nma_sucra"  # Surface Under Cumulative Ranking
+    NMA_P_SCORE = "nma_p_score"  # P-score (frequentist SUCRA)
+    NMA_MEAN_RANK = "nma_mean_rank"  # Mean treatment rank
+    NMA_BEST_PROBABILITY = "nma_best_prob"  # Probability of being best
     NMA_RELATIVE_EFFECT = "nma_relative_effect"  # Pairwise comparison from NMA
-    NMA_LEAGUE_TABLE = "nma_league_table"      # League table cell
-    NMA_INCONSISTENCY = "nma_inconsistency"    # Local inconsistency (node-splitting)
-    NMA_GLOBAL_INCONSISTENCY = "nma_global_inconsistency"  # Global inconsistency (design-by-treatment)
-    NMA_PSRF = "nma_psrf"                      # PSRF for Bayesian NMA convergence
-    NMA_EFFECTIVE_SAMPLE_SIZE = "nma_ess"     # Effective sample size (Bayesian)
+    NMA_LEAGUE_TABLE = "nma_league_table"  # League table cell
+    NMA_INCONSISTENCY = "nma_inconsistency"  # Local inconsistency (node-splitting)
+    NMA_GLOBAL_INCONSISTENCY = (
+        "nma_global_inconsistency"  # Global inconsistency (design-by-treatment)
+    )
+    NMA_PSRF = "nma_psrf"  # PSRF for Bayesian NMA convergence
+    NMA_EFFECTIVE_SAMPLE_SIZE = "nma_ess"  # Effective sample size (Bayesian)
 
     # Prediction model metrics
-    CALIBRATION = "calibration"               # Calibration slope or intercept
-    BRIER_SCORE = "brier_score"               # Brier score for predictions
-    NET_BENEFIT = "net_benefit"               # Decision curve analysis
+    CALIBRATION = "calibration"  # Calibration slope or intercept
+    BRIER_SCORE = "brier_score"  # Brier score for predictions
+    NET_BENEFIT = "net_benefit"  # Decision curve analysis
 
 
 class EvidenceType(str, Enum):
     """Types of evidence sources."""
+
     OA_DOCUMENT = "oa_document"
     FIXTURE = "fixture"
     COMPUTED = "computed"
@@ -116,12 +119,13 @@ def is_canonical_sha256_content_hash(value: str) -> bool:
     """Validate SHA-256 digest syntax; this does not authenticate the source."""
     if not isinstance(value, str) or not value.startswith(HASH_PREFIX):
         return False
-    digest = value[len(HASH_PREFIX):]
+    digest = value[len(HASH_PREFIX) :]
     return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
 
 
 class EvidenceLocator(BaseModel):
     """Reference to evidence supporting a claim."""
+
     source_type: EvidenceType
     uri: str = Field(..., description="URI or path to evidence")
     content_hash: str = Field(..., description="SHA-256 hash of content")
@@ -135,7 +139,9 @@ class EvidenceLocator(BaseModel):
     def validate_hash(cls, v: str) -> str:
         """Reject noncanonical digests before they become evidence identifiers."""
         if not is_canonical_sha256_content_hash(v):
-            raise ValueError("Content hash must be sha256: followed by 64 lowercase hexadecimal characters")
+            raise ValueError(
+                "Content hash must be sha256: followed by 64 lowercase hexadecimal characters"
+            )
         return v
 
 
@@ -146,6 +152,7 @@ class EvidenceLocator(BaseModel):
 
 class NumericClaim(BaseModel):
     """A numeric claim requiring certification."""
+
     claim_id: str = Field(..., description="Unique identifier for this claim")
     claim_type: ClaimType
     value: float
@@ -170,7 +177,9 @@ class NumericClaim(BaseModel):
     # Quality indicators
     quality_score: float | None = Field(None, description="Study quality score")
     risk_of_bias: str | None = Field(None, description="Risk of bias assessment (low/unclear/high)")
-    grade_certainty: str | None = Field(None, description="GRADE certainty (high/moderate/low/very low)")
+    grade_certainty: str | None = Field(
+        None, description="GRADE certainty (high/moderate/low/very low)"
+    )
 
     # Required evidence
     evidence: list[EvidenceLocator] = Field(
@@ -203,6 +212,7 @@ class NumericClaim(BaseModel):
 
 class ValidatorResult(BaseModel):
     """Result from a single validator."""
+
     validator_name: str
     passed: bool
     severity: Severity
@@ -213,6 +223,7 @@ class ValidatorResult(BaseModel):
 
 class ValidationSummary(BaseModel):
     """Summary of all validation results."""
+
     results: list[ValidatorResult]
     all_passed: bool
     has_blocking: bool
@@ -228,6 +239,7 @@ class ValidationSummary(BaseModel):
 
 class ScopeLock(BaseModel):
     """Defines the scope and constraints for certification."""
+
     scope_id: str
     policy_id: str
     profile: CertificationProfile
@@ -259,6 +271,7 @@ class ScopeLock(BaseModel):
 
 class BundleManifest(BaseModel):
     """Manifest for a certification bundle."""
+
     bundle_id: str
     policy_id: str
     profile: CertificationProfile
@@ -277,6 +290,7 @@ class BundleManifest(BaseModel):
 
 class BundleReceipt(BaseModel):
     """Receipt for a certified bundle."""
+
     bundle_id: str
     outcome: BundleOutcome
     profile: CertificationProfile
@@ -294,6 +308,7 @@ class BundleReceipt(BaseModel):
 
 class ValidatorConfig(BaseModel):
     """Configuration for a single validator."""
+
     name: str
     enabled: bool = True
     severity: Severity = Severity.BLOCK
@@ -302,6 +317,7 @@ class ValidatorConfig(BaseModel):
 
 class Policy(BaseModel):
     """Certification policy defining validation requirements."""
+
     policy_id: str
     profile: CertificationProfile
     description: str = ""
@@ -320,6 +336,7 @@ class Policy(BaseModel):
 
 class JobStatus(str, Enum):
     """Status of a certification job."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -328,6 +345,7 @@ class JobStatus(str, Enum):
 
 class Job(BaseModel):
     """A certification job."""
+
     job_id: str
     status: JobStatus = JobStatus.PENDING
     policy_id: str
@@ -348,14 +366,18 @@ class Job(BaseModel):
 
 class CertifyRequest(BaseModel):
     """Request to certify claims."""
+
     claims: list[NumericClaim]
     policy_id: str = "silver"
-    scope_lock: ScopeLock = Field(..., description="Scope lock is mandatory - must be provided by caller")
+    scope_lock: ScopeLock = Field(
+        ..., description="Scope lock is mandatory - must be provided by caller"
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class CertifyResponse(BaseModel):
     """Response from certification."""
+
     bundle_id: str
     outcome: BundleOutcome
     validation_summary: ValidationSummary
@@ -365,6 +387,7 @@ class CertifyResponse(BaseModel):
 
 class VerifyRequest(BaseModel):
     """Request to verify a bundle."""
+
     bundle_id: str
     check_signature: bool = True
     check_scope_lock: bool = True
@@ -373,6 +396,7 @@ class VerifyRequest(BaseModel):
 
 class VerifyResponse(BaseModel):
     """Response from verification."""
+
     bundle_id: str
     valid: bool
     signature_valid: bool | None = None
@@ -384,6 +408,7 @@ class VerifyResponse(BaseModel):
 
 class JobSubmitRequest(BaseModel):
     """Request to submit a new job."""
+
     policy_id: str = "silver"
     input_path: str | None = None
     claims: list[NumericClaim] | None = None
@@ -392,5 +417,6 @@ class JobSubmitRequest(BaseModel):
 
 class JobResponse(BaseModel):
     """Response with job details."""
+
     job: Job
     bundle_id: str | None = None

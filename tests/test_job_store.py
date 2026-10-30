@@ -2,17 +2,15 @@
 Tests for the JobStore - SQLite-backed persistent job storage.
 """
 
-import os
 import tempfile
 import threading
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from certifier.job_store import JobStore, get_job_store, init_job_store, reset_job_store
-from certifier.models import Job, JobStatus, CertificationProfile
+from certifier.job_store import JobStore, get_job_store, reset_job_store
+from certifier.models import CertificationProfile, Job, JobStatus
 
 
 @pytest.fixture
@@ -40,7 +38,7 @@ def sample_job():
         status=JobStatus.PENDING,
         policy_id="silver",
         profile=CertificationProfile.SILVER,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
 
 
@@ -75,7 +73,7 @@ class TestJobStoreCRUD:
 
         # Update the job
         sample_job.status = JobStatus.RUNNING
-        sample_job.started_at = datetime.now(timezone.utc)
+        sample_job.started_at = datetime.now(UTC)
         job_store.update(sample_job)
 
         # Verify update
@@ -112,7 +110,7 @@ class TestJobStoreQueries:
                 status=JobStatus.PENDING,
                 policy_id="silver",
                 profile=CertificationProfile.SILVER,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             job_store.create(job)
 
@@ -122,15 +120,20 @@ class TestJobStoreQueries:
     def test_list_jobs_by_status(self, job_store):
         """Test filtering jobs by status."""
         # Create jobs with different statuses
-        statuses = [JobStatus.PENDING, JobStatus.RUNNING, JobStatus.COMPLETED,
-                    JobStatus.PENDING, JobStatus.FAILED]
+        statuses = [
+            JobStatus.PENDING,
+            JobStatus.RUNNING,
+            JobStatus.COMPLETED,
+            JobStatus.PENDING,
+            JobStatus.FAILED,
+        ]
         for i, status in enumerate(statuses):
             job = Job(
                 job_id=f"job-{i}",
                 status=status,
                 policy_id="silver",
                 profile=CertificationProfile.SILVER,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             job_store.create(job)
 
@@ -141,16 +144,20 @@ class TestJobStoreQueries:
         """Test filtering jobs by policy."""
         # Create jobs with different policies
         policies = ["bronze", "silver", "gold", "silver", "bronze"]
-        profiles = [CertificationProfile.BRONZE, CertificationProfile.SILVER,
-                    CertificationProfile.GOLD, CertificationProfile.SILVER,
-                    CertificationProfile.BRONZE]
+        profiles = [
+            CertificationProfile.BRONZE,
+            CertificationProfile.SILVER,
+            CertificationProfile.GOLD,
+            CertificationProfile.SILVER,
+            CertificationProfile.BRONZE,
+        ]
         for i, (policy, profile) in enumerate(zip(policies, profiles)):
             job = Job(
                 job_id=f"job-{i}",
                 status=JobStatus.PENDING,
                 policy_id=policy,
                 profile=profile,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             job_store.create(job)
 
@@ -166,7 +173,7 @@ class TestJobStoreQueries:
                 status=JobStatus.PENDING,
                 policy_id="silver",
                 profile=CertificationProfile.SILVER,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             job_store.create(job)
 
@@ -192,7 +199,7 @@ class TestJobStoreQueries:
                 status=JobStatus.PENDING,
                 policy_id="silver",
                 profile=CertificationProfile.SILVER,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             job_store.create(job)
 
@@ -202,7 +209,7 @@ class TestJobStoreQueries:
                 status=JobStatus.COMPLETED,
                 policy_id="silver",
                 profile=CertificationProfile.SILVER,
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             job_store.create(job)
 
@@ -223,7 +230,7 @@ class TestJobStorePersistence:
             status=JobStatus.COMPLETED,
             policy_id="gold",
             profile=CertificationProfile.GOLD,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             metadata={"key": "value"},
         )
         store1.create(job)
@@ -248,12 +255,12 @@ class TestJobStorePersistence:
             status=JobStatus.PENDING,
             policy_id="silver",
             profile=CertificationProfile.SILVER,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         store.create(job)
 
         # WAL file should exist
-        wal_path = Path(temp_db_path + "-wal")
+        _wal_path = Path(temp_db_path + "-wal")
         # Note: WAL file may not exist if no changes pending
         # Just verify no errors occur
         store.close()
@@ -276,7 +283,7 @@ class TestJobStoreThreadSafety:
             try:
                 store = get_job_store()
                 stores.append(id(store))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- assert every worker failure on the main thread
                 errors.append(e)
 
         # Launch multiple threads
@@ -304,10 +311,10 @@ class TestJobStoreThreadSafety:
                     status=JobStatus.PENDING,
                     policy_id="silver",
                     profile=CertificationProfile.SILVER,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
                 job_store.create(job)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- assert every worker failure on the main thread
                 errors.append(e)
 
         # Launch multiple threads
@@ -334,7 +341,7 @@ class TestJobStoreCleanup:
             status=JobStatus.COMPLETED,
             policy_id="silver",
             profile=CertificationProfile.SILVER,
-            created_at=datetime.now(timezone.utc) - timedelta(days=60),
+            created_at=datetime.now(UTC) - timedelta(days=60),
         )
         job_store.create(old_job)
 
@@ -344,7 +351,7 @@ class TestJobStoreCleanup:
             status=JobStatus.COMPLETED,
             policy_id="silver",
             profile=CertificationProfile.SILVER,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         job_store.create(recent_job)
 
@@ -366,7 +373,7 @@ class TestJobStoreMetadata:
             status=JobStatus.COMPLETED,
             policy_id="gold",
             profile=CertificationProfile.GOLD,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             metadata={
                 "claims_count": 150,
                 "validators": ["schema", "memory_leak"],
@@ -381,7 +388,7 @@ class TestJobStoreMetadata:
 
     def test_job_timestamps_persists(self, job_store):
         """Test that timestamps are properly persisted."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         job = Job(
             job_id="timestamp-job",
             status=JobStatus.COMPLETED,

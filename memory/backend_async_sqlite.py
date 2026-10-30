@@ -9,39 +9,42 @@ import asyncio
 import hashlib
 import json
 import uuid
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from functools import wraps
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Concatenate, Optional, ParamSpec, TypeVar
+from typing import Any, Concatenate, ParamSpec, TypeVar
 
 try:
     import aiosqlite
 except ImportError:
     aiosqlite = None
 
+from .fts5_sanitizer import sanitize_fts5_query
 from .schema import (
     MemoryItem,
-    MemoryType,
     MemorySensitivity,
     MemorySource,
     MemoryStats,
+    MemoryType,
     RecallResult,
     RetentionPolicy,
 )
-from .fts5_sanitizer import sanitize_fts5_query
-
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
 def _serialized_write(
-    operation: Callable[Concatenate["AsyncLocalSQLiteBackend", _P], Awaitable[_R]],
-) -> Callable[Concatenate["AsyncLocalSQLiteBackend", _P], Awaitable[_R]]:
+    operation: Callable[Concatenate[AsyncLocalSQLiteBackend, _P], Awaitable[_R]],
+) -> Callable[Concatenate[AsyncLocalSQLiteBackend, _P], Awaitable[_R]]:
     """Serialize writes without sacrificing concurrent reads or hiding SQLite errors."""
+
     @wraps(operation)
     async def guarded(
-        self: AsyncLocalSQLiteBackend, *args: _P.args, **kwargs: _P.kwargs,
+        self: AsyncLocalSQLiteBackend,
+        *args: _P.args,
+        **kwargs: _P.kwargs,
     ) -> _R:
         async with self._write_lock:
             return await operation(self, *args, **kwargs)
@@ -64,8 +67,7 @@ class AsyncLocalSQLiteBackend:
     def __init__(self, db_path: str = "./memory.db", pool_size: int = 5):
         if aiosqlite is None:
             raise ImportError(
-                "aiosqlite is required for async operations. "
-                "Install with: pip install aiosqlite"
+                "aiosqlite is required for async operations. Install with: pip install aiosqlite"
             )
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -217,38 +219,41 @@ class AsyncLocalSQLiteBackend:
             # Check for duplicate content
             await cursor.execute(
                 "SELECT id FROM memory_items WHERE content_hash = ? AND deleted = 0",
-                (content_hash,)
+                (content_hash,),
             )
             existing = await cursor.fetchone()
             if existing:
                 return existing["id"]
 
             # Insert new item
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 INSERT INTO memory_items (
                     id, created_at_utc, updated_at_utc, type, source,
                     tags, text, metadata, sensitivity, retention, content_hash
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                item.id,
-                item.created_at_utc.isoformat(),
-                item.updated_at_utc.isoformat(),
-                item.type.value,
-                item.source.value,
-                json.dumps(item.tags),
-                item.text,
-                json.dumps(item.metadata),
-                item.sensitivity.value,
-                json.dumps(item.retention.model_dump()),
-                content_hash,
-            ))
+            """,
+                (
+                    item.id,
+                    item.created_at_utc.isoformat(),
+                    item.updated_at_utc.isoformat(),
+                    item.type.value,
+                    item.source.value,
+                    json.dumps(item.tags),
+                    item.text,
+                    json.dumps(item.metadata),
+                    item.sensitivity.value,
+                    json.dumps(item.retention.model_dump()),
+                    content_hash,
+                ),
+            )
 
             await conn.commit()
             return item.id
         finally:
             await self._return_connection(conn)
 
-    async def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    async def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID asynchronously."""
         if not self._initialized:
             await self.initialize()
@@ -257,8 +262,7 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
             await cursor.execute(
-                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0",
-                (item_id,)
+                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0", (item_id,)
             )
             row = await cursor.fetchone()
 
@@ -272,9 +276,9 @@ class AsyncLocalSQLiteBackend:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         include_deleted: bool = False,
     ) -> RecallResult:
         """
@@ -292,6 +296,7 @@ class AsyncLocalSQLiteBackend:
             await self.initialize()
 
         import time
+
         start_time = time.perf_counter()
 
         # Sanitize query to prevent FTS5 injection
@@ -370,7 +375,7 @@ class AsyncLocalSQLiteBackend:
         self,
         limit: int = 100,
         offset: int = 0,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination asynchronously."""
@@ -422,7 +427,7 @@ class AsyncLocalSQLiteBackend:
             else:
                 await cursor.execute(
                     "UPDATE memory_items SET deleted = 1, updated_at_utc = ? WHERE id = ?",
-                    (datetime.now(timezone.utc).isoformat(), item_id)
+                    (datetime.now(UTC).isoformat(), item_id),
                 )
 
             await conn.commit()

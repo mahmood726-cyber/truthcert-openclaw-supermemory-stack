@@ -89,9 +89,8 @@ class MemoryRecall:
                 relevance_score = 1.0 / (1 + position * 0.1)
 
                 combined_score = (
-                    (1 - recency_weight) * relevance_score +
-                    recency_weight * recency_score
-                )
+                    1 - recency_weight
+                ) * relevance_score + recency_weight * recency_score
 
                 if combined_score >= min_relevance:
                     scored_items.append((item, combined_score))
@@ -132,10 +131,7 @@ class MemoryRecall:
         )
 
         # Filter by time
-        return [
-            item for item in items
-            if item.created_at_utc >= cutoff
-        ]
+        return [item for item in items if item.created_at_utc >= cutoff]
 
     def recall_by_type(
         self,
@@ -162,10 +158,7 @@ class MemoryRecall:
         )
 
         if tags_filter:
-            items = [
-                item for item in items
-                if any(tag in item.tags for tag in tags_filter)
-            ]
+            items = [item for item in items if any(tag in item.tags for tag in tags_filter)]
 
         return items
 
@@ -193,10 +186,7 @@ class MemoryRecall:
         summaries = self.recall_by_type(MemoryType.SUMMARY, limit=3)
 
         return {
-            "recent_decisions": [
-                {"text": d.text[:200], "tags": d.tags}
-                for d in decisions
-            ],
+            "recent_decisions": [{"text": d.text[:200], "tags": d.tags} for d in decisions],
             "codebase_indexed": codebase is not None,
             "codebase_path": codebase.metadata.get("repo_path") if codebase else None,
             "summaries": [s.text[:150] for s in summaries],

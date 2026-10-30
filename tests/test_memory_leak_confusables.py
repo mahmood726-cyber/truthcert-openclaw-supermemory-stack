@@ -26,10 +26,13 @@ def test_confusable_memory_source_is_refused_in_evidence_metadata(letter):
 def test_external_source_is_not_rejected_by_memory_normalization():
     """Prevent a false refusal for ordinary non-memory citation metadata."""
     validator = MemoryLeakValidator()
-    assert validator._check_metadata_for_memory(
-        {"source": "https://example.org/synthetic-trial"},
-        deep=True,
-    ) is None
+    assert (
+        validator._check_metadata_for_memory(
+            {"source": "https://example.org/synthetic-trial"},
+            deep=True,
+        )
+        is None
+    )
 
 
 def test_malformed_base64_candidate_does_not_create_a_false_memory_refusal():

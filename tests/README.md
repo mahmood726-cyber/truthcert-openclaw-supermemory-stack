@@ -208,6 +208,7 @@ class TestMyFeature:
 from fastapi.testclient import TestClient
 from certifier.main import app
 
+
 def test_endpoint(signing_keys):
     client = TestClient(app)
     response = client.post("/certify", json={...})
@@ -218,6 +219,7 @@ def test_endpoint(signing_keys):
 
 ```python
 from unittest.mock import patch, MagicMock
+
 
 def test_with_mock():
     mock_response = MagicMock()
@@ -234,6 +236,7 @@ def test_with_mock():
 ```python
 import pytest
 
+
 @pytest.mark.asyncio
 async def test_async_function(async_fixture):
     result = await async_function()
@@ -246,12 +249,11 @@ Tests can be categorized with pytest markers:
 
 ```python
 @pytest.mark.slow
-def test_slow_operation():
-    ...
+def test_slow_operation(): ...
+
 
 @pytest.mark.integration
-def test_integration():
-    ...
+def test_integration(): ...
 ```
 
 Run specific categories:

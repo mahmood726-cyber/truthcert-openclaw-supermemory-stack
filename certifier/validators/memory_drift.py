@@ -2,10 +2,9 @@
 Memory drift validator - detects when memory contradicts extracted evidence.
 """
 
-from typing import Any, Optional
-import math
+from typing import Any, ClassVar
 
-from ..constants import Severity, CertificationProfile
+from ..constants import CertificationProfile, Severity
 from ..models import NumericClaim, ScopeLock, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
@@ -29,7 +28,7 @@ class MemoryDriftValidator(Validator):
     default_severity = Severity.WARN
 
     # Fields to check for drift
-    DRIFT_FIELDS = [
+    DRIFT_FIELDS: ClassVar[list[tuple[str, str]]] = [
         ("expected_n", "sample_size"),
         ("expected_value", "value"),
         ("expected_effect", "value"),
@@ -58,7 +57,7 @@ class MemoryDriftValidator(Validator):
                     continue
 
                 # Get actual value
-                actual: Optional[float] = None
+                actual: float | None = None
                 if claim_field == "value":
                     actual = claim.value
                 elif claim_field == "sample_size":
@@ -75,25 +74,33 @@ class MemoryDriftValidator(Validator):
 
                     # Check for drift
                     if not self._values_match(expected_float, actual_float, tolerance):
-                        drift_pct = abs(expected_float - actual_float) / max(abs(expected_float), 1e-10) * 100
-                        drifts.append({
-                            "claim_id": claim.claim_id,
-                            "field": memory_field,
-                            "expected_from_memory": expected_float,
-                            "actual_from_evidence": actual_float,
-                            "drift_percentage": round(drift_pct, 2),
-                            "issue": f"Memory expected {expected_float}, evidence shows {actual_float}",
-                        })
+                        drift_pct = (
+                            abs(expected_float - actual_float)
+                            / max(abs(expected_float), 1e-10)
+                            * 100
+                        )
+                        drifts.append(
+                            {
+                                "claim_id": claim.claim_id,
+                                "field": memory_field,
+                                "expected_from_memory": expected_float,
+                                "actual_from_evidence": actual_float,
+                                "drift_percentage": round(drift_pct, 2),
+                                "issue": f"Memory expected {expected_float}, evidence shows {actual_float}",
+                            }
+                        )
                 except (ValueError, TypeError):
                     # Non-numeric comparison
                     if str(expected) != str(actual):
-                        drifts.append({
-                            "claim_id": claim.claim_id,
-                            "field": memory_field,
-                            "expected_from_memory": str(expected),
-                            "actual_from_evidence": str(actual),
-                            "issue": f"Memory expected '{expected}', evidence shows '{actual}'",
-                        })
+                        drifts.append(
+                            {
+                                "claim_id": claim.claim_id,
+                                "field": memory_field,
+                                "expected_from_memory": str(expected),
+                                "actual_from_evidence": str(actual),
+                                "issue": f"Memory expected '{expected}', evidence shows '{actual}'",
+                            }
+                        )
 
         # Determine severity based on profile
         severity = self._get_severity_for_profile(scope_lock.profile)

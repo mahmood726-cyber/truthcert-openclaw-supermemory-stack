@@ -24,23 +24,28 @@ This prevents:
 """
 
 import re
-from typing import Any, Optional
 from dataclasses import dataclass, field
+from typing import Any
 from urllib.parse import urlparse
 
-from ..constants import Severity, CertificationProfile
-from ..models import NumericClaim, ScopeLock, ValidatorResult, EvidenceType, ValidatorConfig
+from ..constants import CertificationProfile, Severity
+from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
 
 @dataclass
 class EvidenceScheme:
     """Configuration for an allowed evidence scheme."""
+
     name: str
     pattern: re.Pattern
     requires_hash: bool = True
     allowed_profiles: list[CertificationProfile] = field(
-        default_factory=lambda: [CertificationProfile.BRONZE, CertificationProfile.SILVER, CertificationProfile.GOLD]
+        default_factory=lambda: [
+            CertificationProfile.BRONZE,
+            CertificationProfile.SILVER,
+            CertificationProfile.GOLD,
+        ]
     )
     description: str = ""
 
@@ -50,31 +55,31 @@ class EvidenceScheme:
 ALLOWED_SCHEMES = [
     EvidenceScheme(
         name="doi",
-        pattern=re.compile(r'^doi:10\.\d{4,}/[^\s]+$', re.IGNORECASE),
+        pattern=re.compile(r"^doi:10\.\d{4,}/[^\s]+$", re.IGNORECASE),
         requires_hash=True,
         description="Digital Object Identifier",
     ),
     EvidenceScheme(
         name="pmid",
-        pattern=re.compile(r'^pmid:\d+$', re.IGNORECASE),
+        pattern=re.compile(r"^pmid:\d+$", re.IGNORECASE),
         requires_hash=True,
         description="PubMed ID",
     ),
     EvidenceScheme(
         name="pmcid",
-        pattern=re.compile(r'^pmcid:PMC\d+$', re.IGNORECASE),
+        pattern=re.compile(r"^pmcid:PMC\d+$", re.IGNORECASE),
         requires_hash=True,
         description="PubMed Central ID",
     ),
     EvidenceScheme(
         name="arxiv",
-        pattern=re.compile(r'^arxiv:\d{4}\.\d{4,5}(v\d+)?$', re.IGNORECASE),
+        pattern=re.compile(r"^arxiv:\d{4}\.\d{4,5}(v\d+)?$", re.IGNORECASE),
         requires_hash=True,
         description="arXiv preprint ID",
     ),
     EvidenceScheme(
         name="https",
-        pattern=re.compile(r'^https://[^\s]+$', re.IGNORECASE),
+        pattern=re.compile(r"^https://[^\s]+$", re.IGNORECASE),
         requires_hash=True,
         description="Secure web URL",
     ),
@@ -82,7 +87,7 @@ ALLOWED_SCHEMES = [
     # All certified claims must reference externally accessible evidence
     EvidenceScheme(
         name="fixture",
-        pattern=re.compile(r'^fixture:[a-zA-Z0-9_\-]+$', re.IGNORECASE),
+        pattern=re.compile(r"^fixture:[a-zA-Z0-9_\-]+$", re.IGNORECASE),
         requires_hash=True,
         allowed_profiles=[CertificationProfile.BRONZE],  # Only for testing
         description="Test fixture reference (testing only)",
@@ -111,14 +116,12 @@ TRUSTED_DOMAINS = {
     "thelancet.com",
     "nejm.org",
     "cochranelibrary.com",
-
     # Repositories
     "zenodo.org",
     "osf.io",
     "figshare.com",
     "github.com",
     "raw.githubusercontent.com",
-
     # Government/institutional
     "nih.gov",
     "cdc.gov",
@@ -126,7 +129,6 @@ TRUSTED_DOMAINS = {
     "ema.europa.eu",
     "fda.gov",
     "clinicaltrials.gov",
-
     # Data repositories
     "datadryad.org",
     "dataverse.org",
@@ -135,15 +137,15 @@ TRUSTED_DOMAINS = {
 
 # Blocked URI patterns (memory references that might slip through)
 BLOCKED_PATTERNS = [
-    re.compile(r'memory:', re.IGNORECASE),
-    re.compile(r'mem:', re.IGNORECASE),
-    re.compile(r'recall:', re.IGNORECASE),
-    re.compile(r'supermemory:', re.IGNORECASE),
-    re.compile(r'remembered:', re.IGNORECASE),
-    re.compile(r'javascript:', re.IGNORECASE),
-    re.compile(r'data:', re.IGNORECASE),  # Data URIs can embed content
-    re.compile(r'blob:', re.IGNORECASE),
-    re.compile(r'about:', re.IGNORECASE),
+    re.compile(r"memory:", re.IGNORECASE),
+    re.compile(r"mem:", re.IGNORECASE),
+    re.compile(r"recall:", re.IGNORECASE),
+    re.compile(r"supermemory:", re.IGNORECASE),
+    re.compile(r"remembered:", re.IGNORECASE),
+    re.compile(r"javascript:", re.IGNORECASE),
+    re.compile(r"data:", re.IGNORECASE),  # Data URIs can embed content
+    re.compile(r"blob:", re.IGNORECASE),
+    re.compile(r"about:", re.IGNORECASE),
 ]
 
 
@@ -164,7 +166,7 @@ class EvidenceAllowlistValidator(Validator):
     description = "Validates evidence URIs against approved schemes"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         self.schemes = {s.name: s for s in ALLOWED_SCHEMES}
         self.trusted_domains = set(TRUSTED_DOMAINS)
@@ -201,13 +203,15 @@ class EvidenceAllowlistValidator(Validator):
                 # Check for blocked patterns first (security critical)
                 blocked = self._check_blocked_patterns(uri)
                 if blocked:
-                    errors.append({
-                        "claim_id": claim.claim_id,
-                        "evidence_index": i,
-                        "uri": uri[:100],  # Truncate for safety
-                        "issue": f"Blocked URI pattern detected: {blocked}",
-                        "rule": "MEMORY IS NEVER EVIDENCE",
-                    })
+                    errors.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "evidence_index": i,
+                            "uri": uri[:100],  # Truncate for safety
+                            "issue": f"Blocked URI pattern detected: {blocked}",
+                            "rule": "MEMORY IS NEVER EVIDENCE",
+                        }
+                    )
                     continue
 
                 # Validate against allowlist
@@ -217,19 +221,23 @@ class EvidenceAllowlistValidator(Validator):
 
                 # Validate content hash presence
                 if evidence.content_hash is None or not evidence.content_hash.strip():
-                    errors.append({
-                        "claim_id": claim.claim_id,
-                        "evidence_index": i,
-                        "uri": uri[:100],
-                        "issue": "Missing content hash for evidence",
-                    })
+                    errors.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "evidence_index": i,
+                            "uri": uri[:100],
+                            "issue": "Missing content hash for evidence",
+                        }
+                    )
 
         passed = len(errors) == 0
 
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"Validated {validated_count} evidence URIs"
                 if passed
@@ -243,7 +251,7 @@ class EvidenceAllowlistValidator(Validator):
             },
         )
 
-    def _check_blocked_patterns(self, uri: str) -> Optional[str]:
+    def _check_blocked_patterns(self, uri: str) -> str | None:
         """Check if URI matches any blocked pattern."""
         for pattern in self.blocked_patterns:
             if pattern.search(uri):
@@ -263,50 +271,58 @@ class EvidenceAllowlistValidator(Validator):
 
         # Extract scheme
         if ":" not in uri:
-            errors.append({
-                "claim_id": claim_id,
-                "evidence_index": evidence_index,
-                "uri": uri[:100],
-                "issue": "Invalid URI: no scheme found",
-                "allowed_schemes": list(self.schemes.keys()),
-            })
+            errors.append(
+                {
+                    "claim_id": claim_id,
+                    "evidence_index": evidence_index,
+                    "uri": uri[:100],
+                    "issue": "Invalid URI: no scheme found",
+                    "allowed_schemes": list(self.schemes.keys()),
+                }
+            )
             return errors, warnings
 
         scheme = uri.split(":")[0].lower()
 
         # Check if scheme is allowed
         if scheme not in self.schemes:
-            errors.append({
-                "claim_id": claim_id,
-                "evidence_index": evidence_index,
-                "uri": uri[:100],
-                "issue": f"Unknown URI scheme: {scheme}",
-                "allowed_schemes": list(self.schemes.keys()),
-            })
+            errors.append(
+                {
+                    "claim_id": claim_id,
+                    "evidence_index": evidence_index,
+                    "uri": uri[:100],
+                    "issue": f"Unknown URI scheme: {scheme}",
+                    "allowed_schemes": list(self.schemes.keys()),
+                }
+            )
             return errors, warnings
 
         scheme_config = self.schemes[scheme]
 
         # Check profile restriction
         if profile not in scheme_config.allowed_profiles:
-            errors.append({
-                "claim_id": claim_id,
-                "evidence_index": evidence_index,
-                "uri": uri[:100],
-                "issue": f"Scheme '{scheme}' not allowed in {profile.value} profile",
-                "allowed_profiles": [p.value for p in scheme_config.allowed_profiles],
-            })
+            errors.append(
+                {
+                    "claim_id": claim_id,
+                    "evidence_index": evidence_index,
+                    "uri": uri[:100],
+                    "issue": f"Scheme '{scheme}' not allowed in {profile.value} profile",
+                    "allowed_profiles": [p.value for p in scheme_config.allowed_profiles],
+                }
+            )
             return errors, warnings
 
         # Validate pattern
         if not scheme_config.pattern.match(uri):
-            errors.append({
-                "claim_id": claim_id,
-                "evidence_index": evidence_index,
-                "uri": uri[:100],
-                "issue": f"Invalid {scheme} URI format",
-                "expected_pattern": scheme_config.pattern.pattern,
-            })
+            errors.append(
+                {
+                    "claim_id": claim_id,
+                    "evidence_index": evidence_index,
+                    "uri": uri[:100],
+                    "issue": f"Invalid {scheme} URI format",
+                    "expected_pattern": scheme_config.pattern.pattern,
+                }
+            )
             return errors, warnings
 
         # Additional validation for HTTPS
@@ -339,8 +355,7 @@ class EvidenceAllowlistValidator(Validator):
 
             # Remove www. prefix for comparison
             check_domain = domain
-            if check_domain.startswith("www."):
-                check_domain = check_domain[4:]
+            check_domain = check_domain.removeprefix("www.")
 
             # Check against trusted domains with strict subdomain validation
             # SECURITY: Only allow exact matches or PROPER subdomains
@@ -362,56 +377,64 @@ class EvidenceAllowlistValidator(Validator):
             if not is_trusted:
                 suspicious_patterns = [
                     # Common lookalike substitutions
-                    (r'd[0o]i\.org', 'doi.org'),
-                    (r'pub[mn]ed', 'pubmed'),
-                    (r'arx[1i]v', 'arxiv'),
-                    (r'n[1i]h\.gov', 'nih.gov'),
-                    (r'nc[8b][1i]', 'ncbi'),
+                    (r"d[0o]i\.org", "doi.org"),
+                    (r"pub[mn]ed", "pubmed"),
+                    (r"arx[1i]v", "arxiv"),
+                    (r"n[1i]h\.gov", "nih.gov"),
+                    (r"nc[8b][1i]", "ncbi"),
                 ]
                 for pattern, real_domain in suspicious_patterns:
                     if re.search(pattern, check_domain, re.IGNORECASE):
-                        errors.append({
-                            "claim_id": claim_id,
-                            "evidence_index": evidence_index,
-                            "uri": uri[:100],
-                            "domain": domain,
-                            "issue": f"Suspicious lookalike domain detected (similar to {real_domain})",
-                            "security": "POTENTIAL_TYPOSQUATTING",
-                        })
+                        errors.append(
+                            {
+                                "claim_id": claim_id,
+                                "evidence_index": evidence_index,
+                                "uri": uri[:100],
+                                "domain": domain,
+                                "issue": f"Suspicious lookalike domain detected (similar to {real_domain})",
+                                "security": "POTENTIAL_TYPOSQUATTING",
+                            }
+                        )
                         return errors, warnings
 
             if not is_trusted:
                 if self.strict_domains:
-                    errors.append({
-                        "claim_id": claim_id,
-                        "evidence_index": evidence_index,
-                        "uri": uri[:100],
-                        "domain": domain,
-                        "issue": "Domain not in trusted list",
-                        "trusted_domains": list(self.trusted_domains)[:10],  # Sample
-                    })
+                    errors.append(
+                        {
+                            "claim_id": claim_id,
+                            "evidence_index": evidence_index,
+                            "uri": uri[:100],
+                            "domain": domain,
+                            "issue": "Domain not in trusted list",
+                            "trusted_domains": list(self.trusted_domains)[:10],  # Sample
+                        }
+                    )
                 else:
-                    warnings.append({
-                        "claim_id": claim_id,
-                        "evidence_index": evidence_index,
-                        "domain": domain,
-                        "issue": "Domain not in trusted list (strict mode off)",
-                    })
+                    warnings.append(
+                        {
+                            "claim_id": claim_id,
+                            "evidence_index": evidence_index,
+                            "domain": domain,
+                            "issue": "Domain not in trusted list (strict mode off)",
+                        }
+                    )
 
-        except Exception as e:
-            errors.append({
-                "claim_id": claim_id,
-                "evidence_index": evidence_index,
-                "uri": uri[:100],
-                "issue": f"Failed to parse URL: {str(e)[:50]}",
-            })
+        except ValueError as e:
+            errors.append(
+                {
+                    "claim_id": claim_id,
+                    "evidence_index": evidence_index,
+                    "uri": uri[:100],
+                    "issue": f"Failed to parse URL: {str(e)[:50]}",
+                }
+            )
 
         return errors, warnings
 
 
 def is_valid_doi(doi: str) -> bool:
     """Check if a string is a valid DOI."""
-    pattern = re.compile(r'^10\.\d{4,}/[^\s]+$')
+    pattern = re.compile(r"^10\.\d{4,}/[^\s]+$")
     return bool(pattern.match(doi.replace("doi:", "")))
 
 
@@ -433,13 +456,13 @@ def normalize_evidence_uri(uri: str) -> str:
     uri = uri.strip()
 
     # Handle DOI via HTTPS
-    doi_https_pattern = re.compile(r'https?://(?:dx\.)?doi\.org/(10\.\d{4,}/[^\s]+)', re.IGNORECASE)
+    doi_https_pattern = re.compile(r"https?://(?:dx\.)?doi\.org/(10\.\d{4,}/[^\s]+)", re.IGNORECASE)
     match = doi_https_pattern.match(uri)
     if match:
         return f"doi:{match.group(1)}"
 
     # Handle PubMed via HTTPS
-    pmid_https_pattern = re.compile(r'https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)', re.IGNORECASE)
+    pmid_https_pattern = re.compile(r"https?://pubmed\.ncbi\.nlm\.nih\.gov/(\d+)", re.IGNORECASE)
     match = pmid_https_pattern.match(uri)
     if match:
         return f"pmid:{match.group(1)}"

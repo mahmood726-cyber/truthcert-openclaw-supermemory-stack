@@ -10,6 +10,7 @@ from fastapi import HTTPException
 
 class ErrorCode(str, Enum):
     """Standardized error codes."""
+
     # Validation errors (400)
     INVALID_REQUEST = "INVALID_REQUEST"
     VALIDATION_FAILED = "VALIDATION_FAILED"

@@ -2,12 +2,10 @@
 Tests for FTS5 query sanitization - prevents SQL injection attacks.
 """
 
-import pytest
-
 from memory.fts5_sanitizer import (
-    sanitize_fts5_query,
-    escape_fts5_string,
     build_safe_fts5_query,
+    escape_fts5_string,
+    sanitize_fts5_query,
     validate_fts5_query,
 )
 
@@ -191,7 +189,7 @@ class TestValidateFts5Query:
 
     def test_column_filter_syntax_fails(self):
         """Test that column filter syntax fails."""
-        valid, error = validate_fts5_query("{text}:secret")
+        valid, _error = validate_fts5_query("{text}:secret")
         assert not valid
 
 

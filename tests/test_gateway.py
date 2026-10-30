@@ -2,14 +2,12 @@
 Tests for gateway/glue layer.
 """
 
-import pytest
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch, Mock
-from dataclasses import asdict
+from unittest.mock import MagicMock, Mock, patch
 
 import httpx
+import pytest
 
-from gateway.openclaw.glue import TruthCertGlue, CertificationResult
+from gateway.openclaw.glue import CertificationResult, TruthCertGlue
 
 
 @pytest.fixture
@@ -61,7 +59,7 @@ class TestTruthCertGlueCertify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             result = glue.certify_claims(
                 claims=[{"claim_id": "test", "value": 1.0}],
                 policy_id="silver",
@@ -84,8 +82,8 @@ class TestTruthCertGlueCertify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response) as mock_post:
-            result = glue.certify_claims(
+        with patch.object(glue.client, "post", return_value=mock_response) as mock_post:
+            _result = glue.certify_claims(
                 claims=[{"claim_id": "test", "value": 1.0}],
                 policy_id="gold",
                 metadata={"source": "unit_test"},
@@ -107,7 +105,7 @@ class TestTruthCertGlueCertify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             result = glue.certify_claims(
                 claims=[{"claim_id": "bad", "value": 1.0}],
                 policy_id="bronze",
@@ -118,10 +116,7 @@ class TestTruthCertGlueCertify:
 
     def test_certify_claims_http_error(self, glue):
         """Test certification handles HTTP errors."""
-        with patch.object(
-            glue.client, 'post',
-            side_effect=httpx.HTTPError("Connection failed")
-        ):
+        with patch.object(glue.client, "post", side_effect=httpx.HTTPError("Connection failed")):
             result = glue.certify_claims(
                 claims=[{"claim_id": "test", "value": 1.0}],
                 policy_id="bronze",
@@ -143,7 +138,7 @@ class TestTruthCertGlueCertify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             glue.certify_claims(
                 claims=[{"claim_id": "test"}],
                 policy_id="silver",
@@ -164,7 +159,7 @@ class TestTruthCertGlueCertify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             glue.certify_claims(
                 claims=[{"claim_id": "test"}],
                 policy_id="bronze",
@@ -192,7 +187,7 @@ class TestTruthCertGlueVerify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             result = glue.verify_bundle("sha256:valid123")
 
         assert result["valid"] is True
@@ -211,7 +206,7 @@ class TestTruthCertGlueVerify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             result = glue.verify_bundle("sha256:invalid123")
 
         assert result["valid"] is False
@@ -227,7 +222,7 @@ class TestTruthCertGlueVerify:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response) as mock_post:
+        with patch.object(glue.client, "post", return_value=mock_response) as mock_post:
             glue.verify_bundle(
                 "sha256:test",
                 check_signature=False,
@@ -240,10 +235,7 @@ class TestTruthCertGlueVerify:
 
     def test_verify_bundle_http_error(self, glue):
         """Test verify handles HTTP errors."""
-        with patch.object(
-            glue.client, 'post',
-            side_effect=httpx.HTTPError("Connection refused")
-        ):
+        with patch.object(glue.client, "post", side_effect=httpx.HTTPError("Connection refused")):
             result = glue.verify_bundle("sha256:test123")
 
         assert result["valid"] is False
@@ -258,7 +250,7 @@ class TestTruthCertGlueHealthCheck:
         mock_response = Mock()
         mock_response.status_code = 200
 
-        with patch.object(glue.client, 'get', return_value=mock_response):
+        with patch.object(glue.client, "get", return_value=mock_response):
             result = glue.health_check()
 
         assert result is True
@@ -268,17 +260,14 @@ class TestTruthCertGlueHealthCheck:
         mock_response = Mock()
         mock_response.status_code = 503
 
-        with patch.object(glue.client, 'get', return_value=mock_response):
+        with patch.object(glue.client, "get", return_value=mock_response):
             result = glue.health_check()
 
         assert result is False
 
     def test_health_check_connection_error(self, glue):
         """Test health check returns False on connection error."""
-        with patch.object(
-            glue.client, 'get',
-            side_effect=httpx.HTTPError("Connection refused")
-        ):
+        with patch.object(glue.client, "get", side_effect=httpx.HTTPError("Connection refused")):
             result = glue.health_check()
 
         assert result is False
@@ -300,7 +289,7 @@ class TestTruthCertGlueJobs:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             result = glue.submit_job(
                 policy_id="silver",
                 input_path="/data/claims",
@@ -312,10 +301,7 @@ class TestTruthCertGlueJobs:
 
     def test_submit_job_error(self, glue):
         """Test job submission error handling."""
-        with patch.object(
-            glue.client, 'post',
-            side_effect=httpx.HTTPError("Server error")
-        ):
+        with patch.object(glue.client, "post", side_effect=httpx.HTTPError("Server error")):
             result = glue.submit_job(policy_id="bronze")
 
         assert "error" in result
@@ -333,17 +319,14 @@ class TestTruthCertGlueJobs:
         }
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'get', return_value=mock_response):
+        with patch.object(glue.client, "get", return_value=mock_response):
             result = glue.get_job_status("job-123")
 
         assert result["job"]["status"] == "completed"
 
     def test_get_job_status_error(self, glue):
         """Test job status error handling."""
-        with patch.object(
-            glue.client, 'get',
-            side_effect=httpx.HTTPError("Not found")
-        ):
+        with patch.object(glue.client, "get", side_effect=httpx.HTTPError("Not found")):
             result = glue.get_job_status("nonexistent")
 
         assert "error" in result
@@ -384,7 +367,7 @@ class TestTruthCertGlueMemory:
 
     def test_remember(self, glue, mock_memory_commands):
         """Test storing to memory."""
-        result = glue.remember(
+        _result = glue.remember(
             text="Important decision made",
             tags=["decision"],
             memory_type="decision",
@@ -454,7 +437,7 @@ class TestGlueConfiguration:
 
     def test_default_configuration(self, mock_memory_commands):
         """Test default configuration values."""
-        with patch.dict('os.environ', {}, clear=True):
+        with patch.dict("os.environ", {}, clear=True):
             glue = TruthCertGlue(memory_commands=mock_memory_commands)
 
             assert glue.base_url == "http://localhost:8000"
@@ -462,10 +445,13 @@ class TestGlueConfiguration:
 
     def test_environment_configuration(self, mock_memory_commands):
         """Test configuration from environment."""
-        with patch.dict('os.environ', {
-            'TRUTHCERT_URL': 'http://custom:9000',
-            'TRUTHCERT_TIMEOUT': '60',
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "TRUTHCERT_URL": "http://custom:9000",
+                "TRUTHCERT_TIMEOUT": "60",
+            },
+        ):
             glue = TruthCertGlue(memory_commands=mock_memory_commands)
 
             assert glue.base_url == "http://custom:9000"
@@ -473,9 +459,12 @@ class TestGlueConfiguration:
 
     def test_explicit_configuration_overrides_env(self, mock_memory_commands):
         """Test explicit configuration overrides environment."""
-        with patch.dict('os.environ', {
-            'TRUTHCERT_URL': 'http://env:8000',
-        }):
+        with patch.dict(
+            "os.environ",
+            {
+                "TRUTHCERT_URL": "http://env:8000",
+            },
+        ):
             glue = TruthCertGlue(
                 base_url="http://explicit:8000",
                 memory_commands=mock_memory_commands,
@@ -490,8 +479,7 @@ class TestMockedHTTPResponses:
     def test_timeout_handling(self, glue):
         """Test timeout error handling."""
         with patch.object(
-            glue.client, 'post',
-            side_effect=httpx.TimeoutException("Request timed out")
+            glue.client, "post", side_effect=httpx.TimeoutException("Request timed out")
         ):
             result = glue.certify_claims(
                 claims=[{"claim_id": "test"}],
@@ -503,10 +491,7 @@ class TestMockedHTTPResponses:
 
     def test_connection_error_handling(self, glue):
         """Test connection error handling."""
-        with patch.object(
-            glue.client, 'post',
-            side_effect=httpx.ConnectError("Failed to connect")
-        ):
+        with patch.object(glue.client, "post", side_effect=httpx.ConnectError("Failed to connect")):
             result = glue.certify_claims(
                 claims=[{"claim_id": "test"}],
                 policy_id="bronze",
@@ -526,7 +511,7 @@ class TestMockedHTTPResponses:
             )
         )
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             result = glue.certify_claims(
                 claims=[{"claim_id": "test"}],
                 policy_id="bronze",
@@ -541,7 +526,7 @@ class TestMockedHTTPResponses:
         mock_response.json.side_effect = ValueError("Invalid JSON")
         mock_response.raise_for_status = Mock()
 
-        with patch.object(glue.client, 'post', return_value=mock_response):
+        with patch.object(glue.client, "post", return_value=mock_response):
             # The glue code raises an exception on JSON parse errors
             # which is caught by the httpx error handler
             try:

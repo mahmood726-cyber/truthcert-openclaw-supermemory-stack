@@ -14,13 +14,15 @@ Commands:
 import json
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
-from typing import Optional
 
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
+
+from certifier.signing import VerificationError
 
 console = Console()
 
@@ -29,7 +31,6 @@ console = Console()
 @click.version_option(version="1.0.0")
 def cli():
     """TruthCert CLI - Fail-closed certification for numeric claims."""
-    pass
 
 
 # =============================================================================
@@ -41,9 +42,9 @@ def cli():
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.option("--policy", "-p", default="policies/silver.json", help="Policy file path")
 @click.option("--output", "-o", default=None, help="Output plan file")
-def plan(input_dir: str, policy: str, output: Optional[str]):
+def plan(input_dir: str, policy: str, output: str | None):
     """Plan a certification job from input directory."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     input_path = Path(input_dir)
     policy_path = Path(policy)
@@ -60,12 +61,14 @@ def plan(input_dir: str, policy: str, output: Optional[str]):
     claims_files = list(input_path.glob("*.jsonl")) + list(input_path.glob("claims*.json"))
 
     plan_data = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "input_dir": str(input_path.absolute()),
         "policy": policy_data.get("policy_id", policy_path.stem),
         "profile": policy_data.get("profile", "SILVER"),
         "claims_files": [str(f) for f in claims_files],
-        "validators": [v["name"] for v in policy_data.get("validators", []) if v.get("enabled", True)],
+        "validators": [
+            v["name"] for v in policy_data.get("validators", []) if v.get("enabled", True)
+        ],
     }
 
     # Output plan
@@ -111,10 +114,10 @@ def run(job_spec: str):
 
 def _run_local_certification(spec: dict):
     """Run certification locally without server."""
-    from certifier.models import NumericClaim, ScopeLock, Policy, CertificationProfile
     from certifier.bundle import create_bundle
-    from certifier.validators import ValidatorRegistry
     from certifier.constants import Severity
+    from certifier.models import NumericClaim, Policy, ScopeLock
+    from certifier.validators import ValidatorRegistry
 
     # Load policy
     policy_path = Path(f"policies/{spec.get('policy', 'silver')}.json")
@@ -148,7 +151,7 @@ def _run_local_certification(spec: dict):
     )
 
     # Run validation pipeline
-    from certifier.models import ValidatorResult, ValidationSummary
+    from certifier.models import ValidationSummary
 
     pipeline = ValidatorRegistry.create_pipeline(policy.validators)
     results = []
@@ -157,7 +160,9 @@ def _run_local_certification(spec: dict):
         for validator in pipeline:
             result = validator.run(claims, scope_lock, {"policy": policy})
             results.append(result)
-            status = "[green]PASS[/green]" if result.passed else f"[red]{result.severity.value}[/red]"
+            status = (
+                "[green]PASS[/green]" if result.passed else f"[red]{result.severity.value}[/red]"
+            )
             console.print(f"  {validator.name}: {status}")
 
     # Summarize
@@ -195,7 +200,7 @@ def _run_local_certification(spec: dict):
 @click.argument("claims_file", type=click.Path(exists=True))
 @click.option("--policy", "-p", default="silver", help="Policy ID or file path")
 @click.option("--output", "-o", default=None, help="Output directory")
-def certify(claims_file: str, policy: str, output: Optional[str]):
+def certify(claims_file: str, policy: str, output: str | None):
     """Certify claims from a JSONL file."""
     from certifier.models import NumericClaim
 
@@ -282,9 +287,9 @@ def _extract_verified_bundle(archive_path: Path, temporary_root: Path) -> Path:
 
 
 def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock: bool):
-    from certifier.bundle import load_bundle, claims_payload_problems
-    from certifier.signing import verify_signature
+    from certifier.bundle import claims_payload_problems, load_bundle
     from certifier.models import ScopeLock
+    from certifier.signing import verify_signature
 
     try:
         bundle_data = load_bundle(bundle_path)
@@ -317,7 +322,7 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
                 public_key_b64 = pubkey_file.read_text().strip()
                 verify_signature(manifest, signature_b64, public_key_b64)
                 console.print("  [green]✓ Signature valid[/green]")
-            except Exception as e:
+            except (OSError, ValueError, TypeError, VerificationError) as e:
                 console.print(f"  [red]✗ Signature invalid: {e}[/red]")
                 errors.append(str(e))
         else:
@@ -399,7 +404,7 @@ def audit(bundle_path: str, deep: bool):
         console.print("\n[bold]Deep Audit[/bold]")
         # Check each claim
         for i, claim in enumerate(claims[:5]):  # Sample first 5
-            console.print(f"  Claim {i+1}: {claim.get('claim_id', 'unknown')}")
+            console.print(f"  Claim {i + 1}: {claim.get('claim_id', 'unknown')}")
             if claim.get("evidence"):
                 console.print(f"    Evidence: {len(claim['evidence'])} sources")
 
@@ -407,7 +412,6 @@ def audit(bundle_path: str, deep: bool):
 @cli.group()
 def pack():
     """Domain pack commands."""
-    pass
 
 
 @pack.command("test")
@@ -432,12 +436,12 @@ def pack_test():
                 data = json.load(f)
             # Basic validation
             if "claims" in data or "claim_id" in data:
-                console.print(f"    [green]✓ Valid fixture[/green]")
+                console.print("    [green]✓ Valid fixture[/green]")
                 tests_passed += 1
             else:
-                console.print(f"    [yellow]⚠ Missing claims[/yellow]")
+                console.print("    [yellow]⚠ Missing claims[/yellow]")
                 tests_passed += 1
-        except Exception as e:
+        except (OSError, ValueError, TypeError, VerificationError) as e:
             console.print(f"    [red]✗ Error: {e}[/red]")
             tests_failed += 1
 
@@ -475,13 +479,14 @@ def keygen(output: str):
 @cli.group()
 def memory():
     """Memory subsystem commands."""
-    pass
 
 
 @memory.command("remember")
 @click.argument("text")
 @click.option("--tags", "-t", default="", help="Comma-separated tags")
-@click.option("--type", "memory_type", default="note", type=click.Choice(["note", "decision", "runbook"]))
+@click.option(
+    "--type", "memory_type", default="note", type=click.Choice(["note", "decision", "runbook"])
+)
 def memory_remember(text: str, tags: str, memory_type: str):
     """Remember a piece of information."""
     from memory.commands import MemoryCommands
@@ -512,17 +517,19 @@ def memory_recall(query: str, pack: bool, limit: int):
         console.print(f"Items: {result['items_included']}, Chars: {result['total_chars']}")
     else:
         for item in result["items"]:
-            console.print(Panel(
-                f"{item['text']}\n\n[dim]Tags: {', '.join(item['tags'])}[/dim]",
-                title=f"[{item['type']}] {item['id'][:8]}..."
-            ))
+            console.print(
+                Panel(
+                    f"{item['text']}\n\n[dim]Tags: {', '.join(item['tags'])}[/dim]",
+                    title=f"[{item['type']}] {item['id'][:8]}...",
+                )
+            )
         console.print(f"\nTotal matches: {result['total_matches']}")
 
 
 @memory.command("forget")
 @click.option("--id", "item_id", default=None, help="Item ID to forget")
 @click.option("--query", "-q", default=None, help="Query to match items")
-def memory_forget(item_id: Optional[str], query: Optional[str]):
+def memory_forget(item_id: str | None, query: str | None):
     """Forget memory items."""
     from memory.commands import MemoryCommands
 
@@ -580,7 +587,7 @@ def memory_profile():
 
     # Stats
     stats = result["stats"]
-    console.print(f"\n[bold]Stats:[/bold]")
+    console.print("\n[bold]Stats:[/bold]")
     console.print(f"  Total items: {stats['total_items']}")
     console.print(f"  Total bytes: {stats['total_bytes']:,}")
     console.print(f"  By type: {stats['items_by_type']}")
@@ -598,7 +605,7 @@ def memory_index_codebase(path: str, max_files: int):
     with console.status("[bold green]Indexing codebase..."):
         result = cmd.index_codebase(path=path, max_files=max_files)
 
-    console.print(f"[green]Indexed codebase:[/green]")
+    console.print("[green]Indexed codebase:[/green]")
     console.print(f"  Path: {result['repo_path']}")
     console.print(f"  Hash: {result['repo_hash']}")
     console.print(f"  Files: {result['file_count']}")
@@ -617,7 +624,7 @@ def memory_compact(strategy: str, max_age_days: int):
     with console.status("[bold green]Compacting memory..."):
         result = cmd.compact(strategy=strategy, max_age_days=max_age_days)
 
-    console.print(f"[green]Compaction complete:[/green]")
+    console.print("[green]Compaction complete:[/green]")
     console.print(f"  Strategy: {result.get('strategy', strategy)}")
     console.print(f"  Items processed: {result.get('items_processed', 0)}")
     console.print(f"  Summaries created: {result.get('summaries_created', 0)}")

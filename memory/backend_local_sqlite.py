@@ -7,20 +7,20 @@ import hashlib
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Optional
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
+from .fts5_sanitizer import sanitize_fts5_query
 from .schema import (
     MemoryItem,
-    MemoryType,
     MemorySensitivity,
     MemorySource,
     MemoryStats,
+    MemoryType,
     RecallResult,
 )
-from .fts5_sanitizer import sanitize_fts5_query
 
 
 class LocalSQLiteBackend:
@@ -144,42 +144,42 @@ class LocalSQLiteBackend:
             # Check for duplicate content
             cursor.execute(
                 "SELECT id FROM memory_items WHERE content_hash = ? AND deleted = 0",
-                (content_hash,)
+                (content_hash,),
             )
             existing = cursor.fetchone()
             if existing:
                 return existing["id"]
 
             # Insert new item
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO memory_items (
                     id, created_at_utc, updated_at_utc, type, source,
                     tags, text, metadata, sensitivity, retention, content_hash
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                item.id,
-                item.created_at_utc.isoformat(),
-                item.updated_at_utc.isoformat(),
-                item.type.value,
-                item.source.value,
-                json.dumps(item.tags),
-                item.text,
-                json.dumps(item.metadata),
-                item.sensitivity.value,
-                json.dumps(item.retention.model_dump()),
-                content_hash,
-            ))
+            """,
+                (
+                    item.id,
+                    item.created_at_utc.isoformat(),
+                    item.updated_at_utc.isoformat(),
+                    item.type.value,
+                    item.source.value,
+                    json.dumps(item.tags),
+                    item.text,
+                    json.dumps(item.metadata),
+                    item.sensitivity.value,
+                    json.dumps(item.retention.model_dump()),
+                    content_hash,
+                ),
+            )
 
         return item.id
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0",
-                (item_id,)
-            )
+            cursor.execute("SELECT * FROM memory_items WHERE id = ? AND deleted = 0", (item_id,))
             row = cursor.fetchone()
 
             if row:
@@ -190,9 +190,9 @@ class LocalSQLiteBackend:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         include_deleted: bool = False,
     ) -> RecallResult:
         """
@@ -207,6 +207,7 @@ class LocalSQLiteBackend:
             include_deleted: Include soft-deleted items
         """
         import time
+
         start_time = time.perf_counter()
 
         # Sanitize query to prevent FTS5 injection
@@ -281,7 +282,7 @@ class LocalSQLiteBackend:
         self,
         limit: int = 100,
         offset: int = 0,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination."""
@@ -322,7 +323,7 @@ class LocalSQLiteBackend:
             else:
                 cursor.execute(
                     "UPDATE memory_items SET deleted = 1, updated_at_utc = ? WHERE id = ?",
-                    (datetime.now(timezone.utc).isoformat(), item_id)
+                    (datetime.now(UTC).isoformat(), item_id),
                 )
 
             return cursor.rowcount > 0

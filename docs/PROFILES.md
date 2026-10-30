@@ -130,10 +130,7 @@ export TRUTHCERT_MEMORY_PROFILE=full
 
 ```python
 # Certification request
-{
-    "claims": [...],
-    "policy_id": "silver"
-}
+{"claims": [...], "policy_id": "silver"}
 ```
 
 ### Configuration

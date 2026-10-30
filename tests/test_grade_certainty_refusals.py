@@ -9,11 +9,13 @@ from certifier.validators.grade_validator import GRADECertaintyValidator
 
 
 def make_claim(sample_claim, metadata, grade_certainty=None):
-    return sample_claim.model_copy(update={
-        "claim_type": ClaimType.GRADE_CERTAINTY,
-        "grade_certainty": grade_certainty,
-        "metadata": {"study_design": "RCT", **metadata},
-    })
+    return sample_claim.model_copy(
+        update={
+            "claim_type": ClaimType.GRADE_CERTAINTY,
+            "grade_certainty": grade_certainty,
+            "metadata": {"study_design": "RCT", **metadata},
+        }
+    )
 
 
 @pytest.mark.parametrize(

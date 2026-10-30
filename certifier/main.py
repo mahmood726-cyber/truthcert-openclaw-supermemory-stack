@@ -7,73 +7,65 @@ import os
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Request, Response, APIRouter
-from fastapi.responses import JSONResponse, FileResponse
+import aiofiles
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from .bundle import (
+    create_bundle,
+    get_bundle_dir,
+    list_bundles,
+    load_bundle,
+)
 from .constants import (
+    API_PATH_HEALTH,
     DEFAULT_HOST,
-    DEFAULT_PORT,
-    DEFAULT_RATE_LIMIT_CERTIFY,
-    DEFAULT_RATE_LIMIT_VERIFY,
-    DEFAULT_RATE_LIMIT_DEFAULT,
     DEFAULT_MAX_CLAIMS,
     DEFAULT_MAX_REQUEST_MB,
     DEFAULT_POLICY_CACHE_TTL,
+    DEFAULT_PORT,
+    DEFAULT_RATE_LIMIT_CERTIFY,
+    DEFAULT_RATE_LIMIT_DEFAULT,
+    DEFAULT_RATE_LIMIT_VERIFY,
     ENV_HOST,
-    ENV_PORT,
-    ENV_RATE_LIMIT_CERTIFY,
-    ENV_RATE_LIMIT_VERIFY,
-    ENV_RATE_LIMIT_DEFAULT,
     ENV_MAX_CLAIMS,
     ENV_MAX_REQUEST_MB,
-    API_PATH_HEALTH,
-    API_PATH_JOBS,
-    API_PATH_CERTIFY,
-    API_PATH_VERIFY,
-    API_PATH_BUNDLES,
-    API_PATH_AUDIT,
+    ENV_PORT,
+    ENV_RATE_LIMIT_CERTIFY,
+    ENV_RATE_LIMIT_DEFAULT,
+    ENV_RATE_LIMIT_VERIFY,
     BundleOutcome,
     Severity,
 )
+from .errors import (
+    RateLimitError,
+    TruthCertError,
+    ValidationError,
+    create_not_found_error,
+)
+from .job_store import get_job_store, init_job_store
 from .models import (
     CertifyRequest,
     CertifyResponse,
-    VerifyRequest,
-    VerifyResponse,
-    JobSubmitRequest,
-    JobResponse,
     Job,
+    JobResponse,
     JobStatus,
+    JobSubmitRequest,
     Policy,
     ScopeLock,
     ValidationSummary,
     ValidatorResult,
-    CertificationProfile,
-)
-from .bundle import (
-    create_bundle,
-    load_bundle,
-    list_bundles,
-    get_bundle_dir,
+    VerifyRequest,
+    VerifyResponse,
 )
 from .signing import verify_signature
-from .errors import (
-    TruthCertError,
-    ValidationError,
-    NotFoundError,
-    RateLimitError,
-    create_not_found_error,
-    handle_exception,
-)
 from .validators import ValidatorRegistry
-from .job_store import get_job_store, init_job_store
 
 # =============================================================================
 # Rate Limiting Setup
@@ -90,7 +82,7 @@ _policy_cache: dict[str, tuple[Policy, float]] = {}
 
 def load_policy(policy_id: str) -> Policy:
     """Load a policy with caching."""
-    now = datetime.now(timezone.utc).timestamp()
+    now = datetime.now(UTC).timestamp()
 
     # Check cache
     if policy_id in _policy_cache:
@@ -121,7 +113,7 @@ def load_policy(policy_id: str) -> Policy:
 def validate_bundle_id(bundle_id: str) -> str:
     """Validate and sanitize bundle ID to prevent path traversal."""
     # Only allow alphanumeric, hyphens, underscores, colons
-    if not re.match(r'^[a-zA-Z0-9_:\-]+$', bundle_id):
+    if not re.match(r"^[a-zA-Z0-9_:\-]+$", bundle_id):
         raise ValidationError(
             message="Invalid bundle ID format",
             details={"bundle_id": bundle_id[:50]},
@@ -159,7 +151,6 @@ async def lifespan(app: FastAPI):
     init_job_store()  # Initialize SQLite job store
     yield
     # Shutdown
-    pass
 
 
 # =============================================================================
@@ -212,7 +203,7 @@ async def health():
         "status": "healthy",
         "service": "truthcert",
         "version": "1.0.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -324,7 +315,7 @@ async def certify_claims(request: Request, body: CertifyRequest):
     )
 
     # Create bundle
-    bundle_path, receipt = create_bundle(
+    _bundle_path, receipt = create_bundle(
         claims=body.claims,
         scope_lock=scope_lock,
         policy_id=body.policy_id,
@@ -384,6 +375,7 @@ async def verify_bundle(request: Request, body: VerifyRequest):
     # Full claims payload integrity is necessary in addition to a manifest
     # signature: legacy bundle IDs omit clinical fields such as CI bounds.
     from .bundle import claims_payload_problems
+
     payload_errors = claims_payload_problems(bundle_path, manifest)
     if payload_errors:
         schema_valid = False
@@ -402,9 +394,9 @@ async def verify_bundle(request: Request, body: VerifyRequest):
                 public_key_b64 = pubkey_file.read_text().strip()
                 verify_signature(manifest, signature_b64, public_key_b64)
                 signature_valid = True
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- fail-closed verification boundary
                 signature_valid = False
-                errors.append(f"Signature verification failed: {str(e)}")
+                errors.append(f"Signature verification failed: {e!s}")
         else:
             signature_valid = False
             errors.append("Missing signature or public key files")
@@ -492,8 +484,8 @@ async def get_receipt(request: Request, bundle_id: str):
     if not receipt_path.exists():
         raise create_not_found_error("bundle", bundle_id)
 
-    with open(receipt_path) as f:
-        return json.load(f)
+    async with aiofiles.open(receipt_path) as f:
+        return json.loads(await f.read())
 
 
 @api_v1_router.get("/bundles/{bundle_id}/bundle.tar.gz")
@@ -510,6 +502,7 @@ async def download_bundle(request: Request, bundle_id: str):
         raise create_not_found_error("bundle", bundle_id)
 
     from .bundle import create_bundle_tarball
+
     tarball_path = create_bundle_tarball(bundle_path)
 
     return FileResponse(
@@ -538,8 +531,8 @@ async def get_audit_log(request: Request, run_id: str):
         raise create_not_found_error("bundle", run_id)
 
     logs = []
-    with open(audit_path) as f:
-        for line in f:
+    async with aiofiles.open(audit_path) as f:
+        async for line in f:
             if line.strip():
                 logs.append(json.loads(line))
 

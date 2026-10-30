@@ -6,36 +6,31 @@ exploited if user input is passed directly to MATCH clauses.
 """
 
 import re
-from typing import Optional
-
 
 # FTS5 special characters and operators that need escaping
 FTS5_SPECIAL_CHARS = {
     '"': '""',  # Double quotes need doubling
     "'": "''",  # Single quotes need doubling
-    '*': '',    # Wildcard - remove
-    '^': '',    # Column start - remove
-    '-': ' ',   # NOT operator - replace with space
-    '+': ' ',   # AND operator - replace with space
-    '(': '',    # Grouping - remove
-    ')': '',    # Grouping - remove
-    ':': '',    # Column specifier - remove
-    'OR': ' ',  # Boolean operator
-    'AND': ' ', # Boolean operator
-    'NOT': ' ', # Boolean operator
-    'NEAR': '', # Proximity operator - remove
+    "*": "",  # Wildcard - remove
+    "^": "",  # Column start - remove
+    "-": " ",  # NOT operator - replace with space
+    "+": " ",  # AND operator - replace with space
+    "(": "",  # Grouping - remove
+    ")": "",  # Grouping - remove
+    ":": "",  # Column specifier - remove
+    "OR": " ",  # Boolean operator
+    "AND": " ",  # Boolean operator
+    "NOT": " ",  # Boolean operator
+    "NEAR": "",  # Proximity operator - remove
 }
 
 # Pattern to match FTS5 operators
-FTS5_OPERATOR_PATTERN = re.compile(
-    r'\b(OR|AND|NOT|NEAR)\b',
-    re.IGNORECASE
-)
+FTS5_OPERATOR_PATTERN = re.compile(r"\b(OR|AND|NOT|NEAR)\b", re.IGNORECASE)
 
 # Pattern for dangerous constructs
 FTS5_DANGEROUS_PATTERN = re.compile(
-    r'(\{[^}]*\}|\[[^\]]*\])',  # Column filters like {col} or [col]
-    re.IGNORECASE
+    r"(\{[^}]*\}|\[[^\]]*\])",  # Column filters like {col} or [col]
+    re.IGNORECASE,
 )
 
 
@@ -63,10 +58,10 @@ def sanitize_fts5_query(query: str, allow_prefix_search: bool = False) -> str:
     query = query[:1000]
 
     # Remove dangerous column filter constructs
-    query = FTS5_DANGEROUS_PATTERN.sub(' ', query)
+    query = FTS5_DANGEROUS_PATTERN.sub(" ", query)
 
     # Replace FTS5 boolean operators with spaces
-    query = FTS5_OPERATOR_PATTERN.sub(' ', query)
+    query = FTS5_OPERATOR_PATTERN.sub(" ", query)
 
     result = []
     i = 0
@@ -80,40 +75,41 @@ def sanitize_fts5_query(query: str, allow_prefix_search: bool = False) -> str:
         elif char == "'":
             # Escape single quotes by doubling
             result.append("''")
-        elif char == '*':
+        elif char == "*":
             # Optionally preserve prefix search
-            if allow_prefix_search and i > 0 and query[i-1].isalnum():
-                # Only allow * at end of words
-                if i == len(query) - 1 or not query[i+1].isalnum():
-                    result.append(char)
+            # Only allow * at end of words
+            if (allow_prefix_search and i > 0 and query[i - 1].isalnum()) and (
+                i == len(query) - 1 or not query[i + 1].isalnum()
+            ):
+                result.append(char)
             # Otherwise strip it
-        elif char in '(){}[]^:':
+        elif char in "(){}[]^:":
             # Remove grouping and column specifiers
-            result.append(' ')
-        elif char == '-':
+            result.append(" ")
+        elif char == "-":
             # Replace NOT operator with space (unless it's a hyphenated word)
             if i > 0 and i < len(query) - 1:
-                if query[i-1].isalnum() and query[i+1].isalnum():
+                if query[i - 1].isalnum() and query[i + 1].isalnum():
                     # Hyphenated word - keep it
                     result.append(char)
                 else:
-                    result.append(' ')
+                    result.append(" ")
             else:
-                result.append(' ')
-        elif char == '+':
+                result.append(" ")
+        elif char == "+":
             # Replace AND operator with space
-            result.append(' ')
-        elif char == '\n' or char == '\r' or char == '\t':
+            result.append(" ")
+        elif char == "\n" or char == "\r" or char == "\t":
             # Normalize whitespace
-            result.append(' ')
+            result.append(" ")
         else:
             result.append(char)
 
         i += 1
 
     # Join and normalize whitespace
-    sanitized = ''.join(result)
-    sanitized = ' '.join(sanitized.split())
+    sanitized = "".join(result)
+    sanitized = " ".join(sanitized.split())
 
     # If empty after sanitization, return a safe default
     if not sanitized.strip():
@@ -125,14 +121,14 @@ def sanitize_fts5_query(query: str, allow_prefix_search: bool = False) -> str:
     words = sanitized.split()
     quoted_words = []
     for word in words:
-        if '-' in word and not word.startswith('"'):
+        if "-" in word and not word.startswith('"'):
             # Quote the hyphenated word, escaping any internal quotes
             escaped = word.replace('"', '""')
             quoted_words.append(f'"{escaped}"')
         else:
             quoted_words.append(word)
 
-    return ' '.join(quoted_words)
+    return " ".join(quoted_words)
 
 
 def escape_fts5_string(value: str) -> str:
@@ -158,7 +154,7 @@ def escape_fts5_string(value: str) -> str:
 def build_safe_fts5_query(
     terms: list[str],
     operator: str = "AND",
-    column: Optional[str] = None,
+    column: str | None = None,
 ) -> str:
     """
     Build a safe FTS5 query from multiple terms.
@@ -198,7 +194,7 @@ def build_safe_fts5_query(
     return query
 
 
-def validate_fts5_query(query: str) -> tuple[bool, Optional[str]]:
+def validate_fts5_query(query: str) -> tuple[bool, str | None]:
     """
     Validate an FTS5 query for safety.
 
@@ -221,9 +217,9 @@ def validate_fts5_query(query: str) -> tuple[bool, Optional[str]]:
 
     # Check for dangerous patterns
     dangerous_patterns = [
-        (r'\bNEAR/\d+', "NEAR operator with distance not allowed"),
-        (r'\{[^}]+\}', "Column filter syntax not allowed"),
-        (r'\[[^\]]+\]', "Column filter syntax not allowed"),
+        (r"\bNEAR/\d+", "NEAR operator with distance not allowed"),
+        (r"\{[^}]+\}", "Column filter syntax not allowed"),
+        (r"\[[^\]]+\]", "Column filter syntax not allowed"),
     ]
 
     for pattern, message in dangerous_patterns:

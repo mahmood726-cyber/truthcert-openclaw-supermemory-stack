@@ -61,8 +61,7 @@ def test_malformed_declared_statistic_refuses(metadata, field, synthetic_scope):
     assert not result.passed
     assert result.severity == Severity.BLOCK
     assert any(
-        error.get("statistic") == field
-        and "not a finite numeric value" in error["issue"]
+        error.get("statistic") == field and "not a finite numeric value" in error["issue"]
         for error in result.details["errors"]
     )
 

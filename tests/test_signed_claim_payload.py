@@ -5,6 +5,7 @@ Its valid signature cannot authenticate CI bounds, sample sizes or provenance.
 New v2 manifests bind the exact claims.jsonl bytes; legacy stays readable but
 cannot receive an authoritative CLI verification PASS.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,8 +16,13 @@ from click.testing import CliRunner
 from certifier.bundle import create_bundle
 from certifier.constants import ENV_BUNDLE_DIR, ENV_SIGNING_KEY
 from certifier.models import (
-    ClaimType, EvidenceLocator, EvidenceType, NumericClaim, ScopeLock,
-    ValidationSummary, CertificationProfile,
+    CertificationProfile,
+    ClaimType,
+    EvidenceLocator,
+    EvidenceType,
+    NumericClaim,
+    ScopeLock,
+    ValidationSummary,
 )
 from certifier.signing import generate_keypair, sign_manifest, verify_signature
 from cli.tc import cli
@@ -50,11 +56,18 @@ def signed_bundle(tmp_path, monkeypatch):
         allowed_sources=["fixture"],
     )
     summary = ValidationSummary(
-        results=[], all_passed=True, has_blocking=False, has_warnings=False,
+        results=[],
+        all_passed=True,
+        has_blocking=False,
+        has_warnings=False,
     )
     bundle_path, _receipt = create_bundle(
-        claims=[claim], scope_lock=scope, policy_id="bronze",
-        validation_summary=summary, validators=[], sign=True,
+        claims=[claim],
+        scope_lock=scope,
+        policy_id="bronze",
+        validation_summary=summary,
+        validators=[],
+        sign=True,
     )
     return bundle_path
 
@@ -63,11 +76,14 @@ def _verify(path):
     return CliRunner().invoke(cli, ["verify", str(path)])
 
 
-@pytest.mark.parametrize("skipped", [
-    ["--no-check-signature"],
-    ["--no-check-scope-lock"],
-    ["--no-check-signature", "--no-check-scope-lock"],
-])
+@pytest.mark.parametrize(
+    "skipped",
+    [
+        ["--no-check-signature"],
+        ["--no-check-scope-lock"],
+        ["--no-check-signature", "--no-check-scope-lock"],
+    ],
+)
 def test_valid_v2_bundle_with_skipped_checks_is_noncertifying(signed_bundle, skipped):
     """Only a complete valid payload reaches INCOMPLETE rather than FAILED."""
     result = CliRunner().invoke(cli, ["verify", str(signed_bundle), *skipped])
@@ -106,7 +122,9 @@ def test_v2_signs_full_claim_payload_and_verifies(signed_bundle):
     ],
 )
 def test_signed_manifest_rejects_changes_to_previously_unbound_fields(
-    signed_bundle, key, value,
+    signed_bundle,
+    key,
+    value,
 ):
     claims_file = signed_bundle / "claims.jsonl"
     claim = json.loads(claims_file.read_text(encoding="utf-8").strip())
@@ -141,6 +159,7 @@ def test_re_signed_wrong_bundle_identity_and_scope_policy_are_refused(signed_bun
 
     from certifier.bundle import compute_bundle_id
     from certifier.models import NumericClaim, ScopeLock
+
     original_claim = NumericClaim.model_validate(
         json.loads((signed_bundle / "claims.jsonl").read_text(encoding="utf-8").strip())
     )
@@ -148,7 +167,10 @@ def test_re_signed_wrong_bundle_identity_and_scope_policy_are_refused(signed_bun
         json.loads((signed_bundle / "scope_lock.json").read_text(encoding="utf-8"))
     )
     manifest["bundle_id"] = compute_bundle_id(
-        [original_claim], scope, "bronze", claims_sha256=manifest["claims_sha256"],
+        [original_claim],
+        scope,
+        "bronze",
+        claims_sha256=manifest["claims_sha256"],
     )
     manifest["policy_id"] = "silver"
     signature, _ = sign_manifest(manifest)

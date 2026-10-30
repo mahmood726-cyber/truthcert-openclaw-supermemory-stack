@@ -2,12 +2,12 @@
 Memory capture module - auto-capture hooks for chat and tool calls.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
-from .schema import MemoryItem, MemoryType, MemorySource, MemoryProfile
 from .backend_local_sqlite import LocalSQLiteBackend
 from .redaction import Redactor, should_capture_tool
+from .schema import MemoryItem, MemoryProfile, MemorySource, MemoryType
 
 
 class MemoryCapture:
@@ -25,7 +25,7 @@ class MemoryCapture:
         self,
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
-        redactor: Optional[Redactor] = None,
+        redactor: Redactor | None = None,
     ):
         self.backend = backend
         self.profile = profile
@@ -36,8 +36,8 @@ class MemoryCapture:
         user_message: str,
         assistant_response: str,
         turn_number: int = 0,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[str]:
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
         """
         Capture a chat turn as a memory item.
 
@@ -79,8 +79,8 @@ class MemoryCapture:
         inputs: dict[str, Any],
         outputs: Any,
         execution_time_ms: float = 0.0,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[str]:
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
         """
         Capture a tool call as a memory item.
 
@@ -102,9 +102,10 @@ class MemoryCapture:
             return None
 
         # Check allowlist if in selected mode
-        if self.profile.capture_mode == "selected":
-            if tool_name not in self.profile.capture_tools:
-                return None
+        if (self.profile.capture_mode == "selected") and (
+            tool_name not in self.profile.capture_tools
+        ):
+            return None
 
         # Build capture text
         parts = [f"Tool: {tool_name}"]
@@ -141,8 +142,8 @@ class MemoryCapture:
         self,
         decision: str,
         context: str = "",
-        tags: Optional[list[str]] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Capture a decision as a memory item.
@@ -167,9 +168,11 @@ class MemoryCapture:
             type=MemoryType.DECISION,
             source=MemorySource.CHAT,
             text=text,
-            tags=["decision"] + (
+            tags=["decision"]
+            + (
                 [self.redactor.redact(t)[0] for t in (tags or [])]
-                if self.profile.redact_before_store else (tags or [])
+                if self.profile.redact_before_store
+                else (tags or [])
             ),
             metadata=self._safe_metadata(metadata),
         )
@@ -182,7 +185,7 @@ class MemoryCapture:
         outcome: str,
         profile: str,
         claim_count: int,
-        errors: Optional[list[str]] = None,
+        errors: list[str] | None = None,
     ) -> str:
         """
         Capture a certification result as a memory item.
@@ -212,18 +215,20 @@ class MemoryCapture:
             source=MemorySource.SYSTEM,
             text=text,
             tags=["certification", outcome.lower(), profile.lower()],
-            metadata=self._safe_metadata({
-                "bundle_id": bundle_id,
-                "outcome": outcome,
-                "profile": profile,
-                "claim_count": claim_count,
-                "errors": errors or [],
-            }),
+            metadata=self._safe_metadata(
+                {
+                    "bundle_id": bundle_id,
+                    "outcome": outcome,
+                    "profile": profile,
+                    "claim_count": claim_count,
+                    "errors": errors or [],
+                }
+            ),
         )
 
         return self.backend.store(item)
 
-    def _safe_metadata(self, metadata: Optional[dict[str, Any]]) -> dict[str, Any]:
+    def _safe_metadata(self, metadata: dict[str, Any] | None) -> dict[str, Any]:
         """Apply the configured data-minimisation rule to nested metadata."""
         raw = metadata or {}
         return self.redactor.redact_dict(raw) if self.profile.redact_before_store else raw
@@ -272,5 +277,5 @@ def trigger_capture_hooks(event: str, **kwargs) -> None:
     for callback in _capture_hooks.get(event, []):
         try:
             callback(**kwargs)
-        except Exception:
-            pass  # Don't let hook errors break the flow
+        except Exception as exc:
+            raise RuntimeError("Memory capture hook failed") from exc

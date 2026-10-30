@@ -2,13 +2,10 @@
 Tests for memory subsystem.
 """
 
-import pytest
-from memory.schema import MemoryItem, MemoryType, MemorySource
-from memory.backend_local_sqlite import LocalSQLiteBackend
-from memory.redaction import Redactor
 from memory.packer import ContextPacker, verify_packing_determinism
 from memory.recall import MemoryRecall
-from memory.capture import MemoryCapture
+from memory.redaction import Redactor
+from memory.schema import MemoryItem, MemorySource, MemoryType
 
 
 class TestMemoryBackend:
@@ -27,18 +24,22 @@ class TestMemoryBackend:
     def test_search_fts(self, memory_db):
         """Test FTS5 search functionality."""
         # Store items
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Meta-analysis of RCT data shows significant effect",
-            tags=["meta-analysis", "rct"],
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Heterogeneity was assessed using I-squared",
-            tags=["heterogeneity"],
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Meta-analysis of RCT data shows significant effect",
+                tags=["meta-analysis", "rct"],
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Heterogeneity was assessed using I-squared",
+                tags=["heterogeneity"],
+            )
+        )
 
         # Search
         result = memory_db.search("meta-analysis")
@@ -48,7 +49,11 @@ class TestMemoryBackend:
     def test_delete_item(self, memory_db, sample_memory_item):
         """Test deleting a memory item."""
         item_id = memory_db.store(sample_memory_item)
-        assert memory_db.exists(item_id) if hasattr(memory_db, 'exists') else memory_db.retrieve(item_id) is not None
+        assert (
+            memory_db.exists(item_id)
+            if hasattr(memory_db, "exists")
+            else memory_db.retrieve(item_id) is not None
+        )
 
         success = memory_db.delete(item_id)
         assert success
@@ -60,11 +65,13 @@ class TestMemoryBackend:
     def test_wipe(self, memory_db, sample_memory_item):
         """Test wiping all memory."""
         memory_db.store(sample_memory_item)
-        memory_db.store(MemoryItem(
-            type=MemoryType.DECISION,
-            source=MemorySource.SYSTEM,
-            text="Another item",
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.DECISION,
+                source=MemorySource.SYSTEM,
+                text="Another item",
+            )
+        )
 
         stats_before = memory_db.get_stats()
         assert stats_before.total_items >= 2
@@ -76,32 +83,39 @@ class TestMemoryBackend:
 
     def test_stats(self, memory_db):
         """Test getting memory statistics."""
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Note 1",
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.DECISION,
-            text="Decision 1",
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Note 1",
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.DECISION,
+                text="Decision 1",
+            )
+        )
 
         stats = memory_db.get_stats()
         assert stats.total_items == 2
         assert "note" in stats.items_by_type or "NOTE" in stats.items_by_type
 
-
     def test_compact_after_soft_delete_preserves_live_search(self, memory_db):
         """Compaction must commit FTS changes before VACUUM, without losing live memory."""
-        removed = memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Synthetic removed observation",
-        ))
-        retained = memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Synthetic retained observation",
-        ))
+        removed = memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Synthetic removed observation",
+            )
+        )
+        retained = memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Synthetic retained observation",
+            )
+        )
 
         assert memory_db.delete(removed)
         assert memory_db.compact(remove_deleted=True) == 1
@@ -136,7 +150,9 @@ class TestRedaction:
     def test_redact_bearer_token(self):
         """Test redacting bearer tokens."""
         redactor = Redactor()
-        text = "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        text = (
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0"
+        )
         redacted, result = redactor.redact(text)
 
         assert "eyJ" not in redacted
@@ -158,14 +174,18 @@ class TestPacker:
     def test_pack_items(self, memory_db, memory_profile):
         """Test packing memory items."""
         # Store items
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="First note",
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.DECISION,
-            text="First decision",
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="First note",
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.DECISION,
+                text="First decision",
+            )
+        )
 
         packer = ContextPacker(memory_db, memory_profile)
         items = memory_db.list_items()
@@ -180,10 +200,12 @@ class TestPacker:
         """Test that packing is deterministic."""
         # Store items
         for i in range(5):
-            memory_db.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text=f"Note {i}",
-            ))
+            memory_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text=f"Note {i}",
+                )
+            )
 
         packer = ContextPacker(memory_db, memory_profile)
         items = memory_db.list_items()
@@ -194,10 +216,12 @@ class TestPacker:
     def test_character_limit(self, memory_db, memory_profile):
         """Test that character limit is respected."""
         # Store a large item
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="x" * 10000,
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="x" * 10000,
+            )
+        )
 
         packer = ContextPacker(memory_db, memory_profile)
         items = memory_db.list_items()
@@ -215,16 +239,20 @@ class TestRecall:
 
     def test_recall_with_query(self, memory_db, memory_profile):
         """Test recall with search query."""
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Publication bias analysis using funnel plots",
-            tags=["bias", "funnel"],
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Heterogeneity assessment with I-squared",
-            tags=["heterogeneity"],
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Publication bias analysis using funnel plots",
+                tags=["bias", "funnel"],
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Heterogeneity assessment with I-squared",
+                tags=["heterogeneity"],
+            )
+        )
 
         recall = MemoryRecall(memory_db, memory_profile)
         result = recall.recall("bias")
@@ -233,14 +261,18 @@ class TestRecall:
 
     def test_recall_by_type(self, memory_db, memory_profile):
         """Test recall filtered by type."""
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="A note",
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.DECISION,
-            text="A decision",
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="A note",
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.DECISION,
+                text="A decision",
+            )
+        )
 
         recall = MemoryRecall(memory_db, memory_profile)
         items = recall.recall_by_type(MemoryType.DECISION)
@@ -254,16 +286,20 @@ class TestTagFiltering:
     def test_tags_with_percent_sign(self, memory_db):
         """Test that tags with % are properly escaped in LIKE queries."""
         # Store item with tag containing %
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Test item with special tag",
-            tags=["100%_complete", "status"],
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Another item without percent",
-            tags=["other"],
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Test item with special tag",
+                tags=["100%_complete", "status"],
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Another item without percent",
+                tags=["other"],
+            )
+        )
 
         # Search with tag filter - should find the item with % in tag
         result = memory_db.search("Test", tags_filter=["100%_complete"])
@@ -273,16 +309,20 @@ class TestTagFiltering:
     def test_tags_with_underscore(self, memory_db):
         """Test that tags with _ are properly escaped in LIKE queries."""
         # Store item with tag containing _
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Test item with underscore",
-            tags=["meta_analysis", "research"],
-        ))
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Another item",
-            tags=["metaXanalysis"],  # Similar but different
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Test item with underscore",
+                tags=["meta_analysis", "research"],
+            )
+        )
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Another item",
+                tags=["metaXanalysis"],  # Similar but different
+            )
+        )
 
         # Search with tag filter - should match exact underscore
         result = memory_db.search("Test", tags_filter=["meta_analysis"])
@@ -291,17 +331,15 @@ class TestTagFiltering:
 
     def test_tags_sql_injection_prevention(self, memory_db):
         """Test that tag filters don't allow SQL injection."""
-        memory_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Safe item",
-            tags=["safe"],
-        ))
+        memory_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Safe item",
+                tags=["safe"],
+            )
+        )
 
         # Try SQL injection via tag filter - should not crash or expose data
-        try:
-            result = memory_db.search("Safe", tags_filter=["'; DROP TABLE memory_items; --"])
-            # Should complete without error, just find no matches
-            assert result is not None
-        except Exception:
-            # If it raises an exception, that's also acceptable (query sanitization)
-            pass
+        result = memory_db.search("Safe", tags_filter=["'; DROP TABLE memory_items; --"])
+        # Sanitization must complete; unexpected errors must fail this security test.
+        assert result is not None

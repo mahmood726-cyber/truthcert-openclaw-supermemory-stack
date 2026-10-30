@@ -3,18 +3,17 @@ Tests for async SQLite backend.
 """
 
 import asyncio
-import pytest
-from datetime import datetime, timezone
-from pathlib import Path
 
+import pytest
+
+from memory.backend_async_sqlite import AsyncLocalSQLiteBackend
 from memory.schema import (
     MemoryItem,
-    MemoryType,
-    MemorySource,
     MemorySensitivity,
+    MemorySource,
+    MemoryType,
     RetentionPolicy,
 )
-from memory.backend_async_sqlite import AsyncLocalSQLiteBackend
 
 
 @pytest.fixture
@@ -123,18 +122,22 @@ class TestAsyncSearch:
     async def test_search_fts(self, async_db):
         """Test FTS5 search functionality."""
         # Store items
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Meta-analysis of RCT data shows significant effect",
-            tags=["meta-analysis", "rct"],
-        ))
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Heterogeneity was assessed using I-squared",
-            tags=["heterogeneity"],
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Meta-analysis of RCT data shows significant effect",
+                tags=["meta-analysis", "rct"],
+            )
+        )
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Heterogeneity was assessed using I-squared",
+                tags=["heterogeneity"],
+            )
+        )
 
         # Search
         result = await async_db.search("meta-analysis")
@@ -144,14 +147,18 @@ class TestAsyncSearch:
     @pytest.mark.asyncio
     async def test_search_with_type_filter(self, async_db):
         """Test search with type filter."""
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="A searchable note",
-        ))
-        await async_db.store(MemoryItem(
-            type=MemoryType.DECISION,
-            text="A searchable decision",
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="A searchable note",
+            )
+        )
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.DECISION,
+                text="A searchable decision",
+            )
+        )
 
         result = await async_db.search("searchable", type_filter=MemoryType.DECISION)
         assert all(item.type == MemoryType.DECISION for item in result.items)
@@ -159,16 +166,20 @@ class TestAsyncSearch:
     @pytest.mark.asyncio
     async def test_search_with_source_filter(self, async_db):
         """Test search with source filter."""
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Chat source item",
-        ))
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.SYSTEM,
-            text="System source item",
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Chat source item",
+            )
+        )
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.SYSTEM,
+                text="System source item",
+            )
+        )
 
         result = await async_db.search("source", source_filter=MemorySource.SYSTEM)
         assert all(item.source == MemorySource.SYSTEM for item in result.items)
@@ -176,16 +187,20 @@ class TestAsyncSearch:
     @pytest.mark.asyncio
     async def test_search_with_tags_filter(self, async_db):
         """Test search with tags filter."""
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Item with special tag",
-            tags=["special", "unique"],
-        ))
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Item without special tag",
-            tags=["normal"],
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Item with special tag",
+                tags=["special", "unique"],
+            )
+        )
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Item without special tag",
+                tags=["normal"],
+            )
+        )
 
         result = await async_db.search("Item", tags_filter=["special"])
         assert any("special" in item.tags for item in result.items)
@@ -193,21 +208,26 @@ class TestAsyncSearch:
     @pytest.mark.asyncio
     async def test_search_tag_filter_treats_like_wildcards_literally(self, async_db):
         """Literal percent and underscore in tags must not match other tag names."""
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Synthetic distinctive alpha memory",
-            tags=["phase%_checkpoint"],
-        ))
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            source=MemorySource.CHAT,
-            text="Synthetic distinctive beta memory",
-            tags=["phaseX_checkpoint"],
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Synthetic distinctive alpha memory",
+                tags=["phase%_checkpoint"],
+            )
+        )
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                source=MemorySource.CHAT,
+                text="Synthetic distinctive beta memory",
+                tags=["phaseX_checkpoint"],
+            )
+        )
 
         result = await async_db.search(
-            "Synthetic", tags_filter=["phase%_checkpoint"],
+            "Synthetic",
+            tags_filter=["phase%_checkpoint"],
         )
         assert [item.text for item in result.items] == [
             "Synthetic distinctive alpha memory",
@@ -218,10 +238,12 @@ class TestAsyncSearch:
         """Test search respects limit parameter."""
         # Store many items
         for i in range(10):
-            await async_db.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text=f"Searchable item number {i}",
-            ))
+            await async_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text=f"Searchable item number {i}",
+                )
+            )
 
         result = await async_db.search("Searchable", limit=3)
         assert len(result.items) <= 3
@@ -229,10 +251,12 @@ class TestAsyncSearch:
     @pytest.mark.asyncio
     async def test_search_returns_execution_time(self, async_db):
         """Test search returns execution time."""
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="Timing test item",
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="Timing test item",
+            )
+        )
 
         result = await async_db.search("Timing")
         assert result.execution_time_ms >= 0
@@ -308,10 +332,12 @@ class TestAsyncListItems:
         """Test list items with pagination."""
         # Store items
         for i in range(5):
-            await async_db.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text=f"Paginated item {i}",
-            ))
+            await async_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text=f"Paginated item {i}",
+                )
+            )
 
         # Get first page
         items1 = await async_db.list_items(limit=2, offset=0)
@@ -352,10 +378,12 @@ class TestAsyncStats:
     @pytest.mark.asyncio
     async def test_stats_total_bytes(self, async_db):
         """Test total bytes in stats."""
-        await async_db.store(MemoryItem(
-            type=MemoryType.NOTE,
-            text="A" * 1000,  # 1000 character text
-        ))
+        await async_db.store(
+            MemoryItem(
+                type=MemoryType.NOTE,
+                text="A" * 1000,  # 1000 character text
+            )
+        )
 
         stats = await async_db.get_stats()
         assert stats.total_bytes >= 1000
@@ -434,10 +462,12 @@ class TestAsyncConcurrentOperations:
         # Store some items first
         ids = []
         for i in range(5):
-            item_id = await async_db.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text=f"Readable item {i}",
-            ))
+            item_id = await async_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text=f"Readable item {i}",
+                )
+            )
             ids.append(item_id)
 
         # Read concurrently
@@ -452,10 +482,12 @@ class TestAsyncConcurrentOperations:
         """Test concurrent search operations."""
         # Store items
         for i in range(5):
-            await async_db.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text=f"Searchable concurrent item {i}",
-            ))
+            await async_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text=f"Searchable concurrent item {i}",
+                )
+            )
 
         # Search concurrently
         queries = ["Searchable", "concurrent", "item"]
@@ -471,10 +503,12 @@ class TestAsyncConcurrentOperations:
         # Store initial items
         stored_ids = []
         for i in range(3):
-            item_id = await async_db.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text=f"Mixed operation item {i}",
-            ))
+            item_id = await async_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text=f"Mixed operation item {i}",
+                )
+            )
             stored_ids.append(item_id)
 
         # Mix of operations
@@ -496,7 +530,6 @@ class TestAsyncConcurrentOperations:
         assert results[3].total_items >= 3  # stats shows items
         assert len(results[4]) >= 3  # list returned items
 
-
     @pytest.mark.asyncio
     async def test_parallel_first_use_deduplicates_without_lock_errors(self, temp_dir):
         """First-use concurrent writers must not race schema, WAL or deduplication."""
@@ -508,10 +541,7 @@ class TestAsyncConcurrentOperations:
         items = [
             MemoryItem(type=MemoryType.NOTE, text="Synthetic concurrent duplicate")
             for _ in range(10)
-        ] + [
-            MemoryItem(type=MemoryType.NOTE, text=f"Synthetic unique item {i}")
-            for i in range(10)
-        ]
+        ] + [MemoryItem(type=MemoryType.NOTE, text=f"Synthetic unique item {i}") for i in range(10)]
         try:
             ids = await asyncio.gather(*(backend.store(item) for item in items))
             assert len(set(ids[:10])) == 1
@@ -520,7 +550,8 @@ class TestAsyncConcurrentOperations:
 
             # A concurrent mutation/read must leave the database valid.
             deleted, retrieved = await asyncio.gather(
-                backend.delete(ids[0]), backend.retrieve(ids[10]),
+                backend.delete(ids[0]),
+                backend.retrieve(ids[10]),
             )
             assert deleted is True
             assert retrieved is not None
@@ -582,10 +613,12 @@ class TestAsyncConnectionPooling:
         try:
             # Perform operations that would use connections
             for i in range(5):
-                await backend.store(MemoryItem(
-                    type=MemoryType.NOTE,
-                    text=f"Pool test item {i}",
-                ))
+                await backend.store(
+                    MemoryItem(
+                        type=MemoryType.NOTE,
+                        text=f"Pool test item {i}",
+                    )
+                )
 
             # Should not have created more than pool_size connections
             # (pool management should work)
@@ -607,10 +640,12 @@ class TestAsyncConnectionPooling:
 
         try:
             # Write from backend1
-            item_id = await backend1.store(MemoryItem(
-                type=MemoryType.NOTE,
-                text="Shared database item",
-            ))
+            item_id = await backend1.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    text="Shared database item",
+                )
+            )
 
             # Read from backend2
             item = await backend2.retrieve(item_id)

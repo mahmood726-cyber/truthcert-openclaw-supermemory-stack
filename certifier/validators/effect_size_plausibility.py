@@ -15,17 +15,18 @@ This prevents implausible values from being certified.
 """
 
 import math
-from typing import Any, Optional
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any
 
 from ..constants import Severity
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ClaimType, ValidatorConfig
+from ..models import ClaimType, NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
 
 class EffectSizeType(str, Enum):
     """Extended effect size types for plausibility checking."""
+
     RISK_RATIO = "risk_ratio"
     ODDS_RATIO = "odds_ratio"
     HAZARD_RATIO = "hazard_ratio"
@@ -46,7 +47,7 @@ class EffectSizeBounds:
 
     # Ratio measures (RR, OR, HR)
     ratio_hard_min: float = 0.0  # Must be positive
-    ratio_hard_max: float = float('inf')  # No hard max
+    ratio_hard_max: float = float("inf")  # No hard max
     ratio_plausible_min: float = 0.01  # Very extreme
     ratio_plausible_max: float = 100.0  # Very extreme
     ratio_typical_min: float = 0.1  # Typical range
@@ -62,7 +63,7 @@ class EffectSizeBounds:
 
     # NNT
     nnt_hard_min: float = 1.0  # Minimum possible NNT
-    nnt_hard_max: float = float('inf')
+    nnt_hard_max: float = float("inf")
     nnt_plausible_max: float = 10000.0  # Very large NNT is implausible
 
     # Proportion
@@ -89,54 +90,44 @@ TYPE_ALIASES = {
     "risk_ratio": EffectSizeType.RISK_RATIO,
     "relative_risk": EffectSizeType.RISK_RATIO,
     "rate_ratio": EffectSizeType.RISK_RATIO,
-
     # Odds Ratio
     "or": EffectSizeType.ODDS_RATIO,
     "odds_ratio": EffectSizeType.ODDS_RATIO,
-
     # Hazard Ratio
     "hr": EffectSizeType.HAZARD_RATIO,
     "hazard_ratio": EffectSizeType.HAZARD_RATIO,
-
     # Mean Difference
     "md": EffectSizeType.MEAN_DIFFERENCE,
     "mean_difference": EffectSizeType.MEAN_DIFFERENCE,
     "wmd": EffectSizeType.MEAN_DIFFERENCE,  # Weighted MD
-
     # Standardized Mean Difference
     "smd": EffectSizeType.STANDARDIZED_MEAN_DIFFERENCE,
     "standardized_mean_difference": EffectSizeType.STANDARDIZED_MEAN_DIFFERENCE,
     "cohens_d": EffectSizeType.STANDARDIZED_MEAN_DIFFERENCE,
     "hedges_g": EffectSizeType.STANDARDIZED_MEAN_DIFFERENCE,
     "glass_delta": EffectSizeType.STANDARDIZED_MEAN_DIFFERENCE,
-
     # NNT
     "nnt": EffectSizeType.NUMBER_NEEDED_TO_TREAT,
     "number_needed_to_treat": EffectSizeType.NUMBER_NEEDED_TO_TREAT,
     "nnh": EffectSizeType.NUMBER_NEEDED_TO_TREAT,  # Number needed to harm
-
     # Proportion
     "proportion": EffectSizeType.PROPORTION,
     "prevalence": EffectSizeType.PROPORTION,
     "incidence": EffectSizeType.PROPORTION,
     "probability": EffectSizeType.PROPORTION,
-
     # Percentage
     "percentage": EffectSizeType.PERCENTAGE,
     "percent": EffectSizeType.PERCENTAGE,
     "rate": EffectSizeType.PERCENTAGE,
-
     # P-value
     "p_value": EffectSizeType.P_VALUE,
     "pvalue": EffectSizeType.P_VALUE,
     "p": EffectSizeType.P_VALUE,
-
     # Correlation
     "correlation": EffectSizeType.CORRELATION,
     "r": EffectSizeType.CORRELATION,
     "pearson_r": EffectSizeType.CORRELATION,
     "spearman_rho": EffectSizeType.CORRELATION,
-
     # RRR/ARR
     "rrr": EffectSizeType.RELATIVE_RISK_REDUCTION,
     "relative_risk_reduction": EffectSizeType.RELATIVE_RISK_REDUCTION,
@@ -162,7 +153,7 @@ class EffectSizePlausibilityValidator(Validator):
     description = "Validates effect sizes against plausible bounds"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         self.bounds = EffectSizeBounds()
         # Get custom params from config
@@ -200,7 +191,9 @@ class EffectSizePlausibilityValidator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"Validated {validated_count} effect size claims"
                 if passed
@@ -213,7 +206,7 @@ class EffectSizePlausibilityValidator(Validator):
             },
         )
 
-    def _determine_effect_size_type(self, claim: NumericClaim) -> Optional[EffectSizeType]:
+    def _determine_effect_size_type(self, claim: NumericClaim) -> EffectSizeType | None:
         """Determine the effect size type from claim."""
         # Check metadata for explicit type
         es_type_raw = claim.metadata.get("effect_size_type", "")
@@ -268,16 +261,22 @@ class EffectSizePlausibilityValidator(Validator):
 
         # Check for NaN or Inf
         if math.isnan(value) or math.isinf(value):
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": es_type.value,
-                "value": str(value),
-                "issue": "Value is NaN or Infinite",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": es_type.value,
+                    "value": str(value),
+                    "issue": "Value is NaN or Infinite",
+                }
+            )
             return errors, warnings
 
         # Validate based on type
-        if es_type in (EffectSizeType.RISK_RATIO, EffectSizeType.ODDS_RATIO, EffectSizeType.HAZARD_RATIO):
+        if es_type in (
+            EffectSizeType.RISK_RATIO,
+            EffectSizeType.ODDS_RATIO,
+            EffectSizeType.HAZARD_RATIO,
+        ):
             self._validate_ratio(claim, es_type, errors, warnings)
 
         elif es_type == EffectSizeType.STANDARDIZED_MEAN_DIFFERENCE:
@@ -326,40 +325,48 @@ class EffectSizePlausibilityValidator(Validator):
 
         # Hard bound: must be positive
         if value <= b.ratio_hard_min:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": es_type.value,
-                "value": value,
-                "issue": f"{es_type.value} must be positive (got {value})",
-                "bound": f"> {b.ratio_hard_min}",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": es_type.value,
+                    "value": value,
+                    "issue": f"{es_type.value} must be positive (got {value})",
+                    "bound": f"> {b.ratio_hard_min}",
+                }
+            )
             return
 
         # Plausible bounds
         if value < b.ratio_plausible_min:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": es_type.value,
-                "value": value,
-                "issue": f"Extremely small {es_type.value} ({value})",
-                "interpretation": "Nearly complete prevention; verify data",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": es_type.value,
+                    "value": value,
+                    "issue": f"Extremely small {es_type.value} ({value})",
+                    "interpretation": "Nearly complete prevention; verify data",
+                }
+            )
         elif value > b.ratio_plausible_max:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": es_type.value,
-                "value": value,
-                "issue": f"Extremely large {es_type.value} ({value})",
-                "interpretation": "100x risk increase; verify data",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": es_type.value,
+                    "value": value,
+                    "issue": f"Extremely large {es_type.value} ({value})",
+                    "interpretation": "100x risk increase; verify data",
+                }
+            )
         elif value < b.ratio_typical_min or value > b.ratio_typical_max:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": es_type.value,
-                "value": value,
-                "issue": f"Unusual {es_type.value} magnitude",
-                "typical_range": f"{b.ratio_typical_min} - {b.ratio_typical_max}",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": es_type.value,
+                    "value": value,
+                    "issue": f"Unusual {es_type.value} magnitude",
+                    "typical_range": f"{b.ratio_typical_min} - {b.ratio_typical_max}",
+                }
+            )
 
     def _validate_smd(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
         """Validate standardized mean difference."""
@@ -368,23 +375,27 @@ class EffectSizePlausibilityValidator(Validator):
 
         # Hard bounds
         if value < b.smd_hard_min or value > b.smd_hard_max:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": "SMD",
-                "value": value,
-                "issue": f"SMD outside valid range [{b.smd_hard_min}, {b.smd_hard_max}]",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "SMD",
+                    "value": value,
+                    "issue": f"SMD outside valid range [{b.smd_hard_min}, {b.smd_hard_max}]",
+                }
+            )
             return
 
         # Plausible bounds
         if value < b.smd_plausible_min or value > b.smd_plausible_max:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": "SMD",
-                "value": value,
-                "issue": f"Extreme SMD value ({value})",
-                "interpretation": "Cohen's d > 0.8 is already 'large'",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "SMD",
+                    "value": value,
+                    "issue": f"Extreme SMD value ({value})",
+                    "interpretation": "Cohen's d > 0.8 is already 'large'",
+                }
+            )
         elif value < b.smd_typical_min or value > b.smd_typical_max:
             # Interpret magnitude
             abs_val = abs(value)
@@ -399,13 +410,15 @@ class EffectSizePlausibilityValidator(Validator):
             else:
                 size = "negligible"
 
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": "SMD",
-                "value": value,
-                "magnitude": size,
-                "interpretation": f"Cohen's d = {value} indicates {size} effect",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "SMD",
+                    "value": value,
+                    "magnitude": size,
+                    "interpretation": f"Cohen's d = {value} indicates {size} effect",
+                }
+            )
 
     def _validate_nnt(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
         """Validate number needed to treat."""
@@ -414,23 +427,27 @@ class EffectSizePlausibilityValidator(Validator):
 
         # Hard bound: must be >= 1
         if value < b.nnt_hard_min:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": "NNT",
-                "value": value,
-                "issue": f"NNT must be >= 1 (got {value})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "NNT",
+                    "value": value,
+                    "issue": f"NNT must be >= 1 (got {value})",
+                }
+            )
             return
 
         # Plausible bound
         if value > b.nnt_plausible_max:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": "NNT",
-                "value": value,
-                "issue": f"Very large NNT ({value})",
-                "interpretation": "Effect may not be clinically meaningful",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "NNT",
+                    "value": value,
+                    "issue": f"Very large NNT ({value})",
+                    "interpretation": "Effect may not be clinically meaningful",
+                }
+            )
 
     def _validate_proportion(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
         """Validate proportion (0-1)."""
@@ -438,12 +455,14 @@ class EffectSizePlausibilityValidator(Validator):
         b = self.bounds
 
         if value < b.proportion_min or value > b.proportion_max:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": "proportion",
-                "value": value,
-                "issue": f"Proportion must be between 0 and 1 (got {value})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "proportion",
+                    "value": value,
+                    "issue": f"Proportion must be between 0 and 1 (got {value})",
+                }
+            )
 
     def _validate_percentage(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
         """Validate percentage (0-100)."""
@@ -451,12 +470,14 @@ class EffectSizePlausibilityValidator(Validator):
         b = self.bounds
 
         if value < b.percentage_min or value > b.percentage_max:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": "percentage",
-                "value": value,
-                "issue": f"Percentage must be between 0 and 100 (got {value})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "percentage",
+                    "value": value,
+                    "issue": f"Percentage must be between 0 and 100 (got {value})",
+                }
+            )
 
     def _validate_p_value(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
         """Validate p-value (0-1)."""
@@ -464,22 +485,26 @@ class EffectSizePlausibilityValidator(Validator):
         b = self.bounds
 
         if value < b.p_value_min or value > b.p_value_max:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": "p-value",
-                "value": value,
-                "issue": f"P-value must be between 0 and 1 (got {value})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "p-value",
+                    "value": value,
+                    "issue": f"P-value must be between 0 and 1 (got {value})",
+                }
+            )
             return
 
         # Warning for suspiciously precise p-values
         if 0 < value < 0.0001:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": "p-value",
-                "value": value,
-                "issue": "Very small p-value; consider reporting as p < 0.001",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "p-value",
+                    "value": value,
+                    "issue": "Very small p-value; consider reporting as p < 0.001",
+                }
+            )
 
     def _validate_correlation(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
         """Validate correlation coefficient (-1 to 1)."""
@@ -487,25 +512,31 @@ class EffectSizePlausibilityValidator(Validator):
         b = self.bounds
 
         if value < b.correlation_min or value > b.correlation_max:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "type": "correlation",
-                "value": value,
-                "issue": f"Correlation must be between -1 and 1 (got {value})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "correlation",
+                    "value": value,
+                    "issue": f"Correlation must be between -1 and 1 (got {value})",
+                }
+            )
 
-    def _validate_mean_difference(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_mean_difference(
+        self, claim: NumericClaim, errors: list[dict], warnings: list[dict]
+    ):
         """Validate mean difference (context-dependent)."""
         # Mean differences are context-dependent, so we mainly check for NaN/Inf
         # and that SE/CI are provided for proper interpretation
         if claim.metadata.get("se") is None and claim.lower_bound is None:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "type": "mean_difference",
-                "value": claim.value,
-                "issue": "Mean difference reported without SE or CI",
-                "recommendation": "Include standard error or confidence interval",
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "type": "mean_difference",
+                    "value": claim.value,
+                    "issue": "Mean difference reported without SE or CI",
+                    "recommendation": "Include standard error or confidence interval",
+                }
+            )
 
     def _validate_confidence_interval(
         self,
@@ -525,29 +556,37 @@ class EffectSizePlausibilityValidator(Validator):
 
         # Lower must be <= upper
         if lower > upper:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "issue": f"CI lower ({lower}) > upper ({upper})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "issue": f"CI lower ({lower}) > upper ({upper})",
+                }
+            )
             return errors, warnings
 
         # Point estimate should be within CI
         if value < lower or value > upper:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "issue": f"Point estimate ({value}) outside CI [{lower}, {upper}]",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "issue": f"Point estimate ({value}) outside CI [{lower}, {upper}]",
+                }
+            )
 
         # For ratio measures, CI should not span 1 if claiming significance
-        if es_type in (EffectSizeType.RISK_RATIO, EffectSizeType.ODDS_RATIO, EffectSizeType.HAZARD_RATIO):
-            if lower < 1 < upper:
-                # CI crosses null
-                if claim.metadata.get("significant", False):
-                    errors.append({
-                        "claim_id": claim.claim_id,
-                        "issue": "Claimed significant but CI crosses null (1.0)",
-                        "ci": f"[{lower}, {upper}]",
-                    })
+        # CI crosses null
+        if (
+            es_type
+            in (EffectSizeType.RISK_RATIO, EffectSizeType.ODDS_RATIO, EffectSizeType.HAZARD_RATIO)
+            and lower < 1 < upper
+        ) and (claim.metadata.get("significant", False)):
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "issue": "Claimed significant but CI crosses null (1.0)",
+                    "ci": f"[{lower}, {upper}]",
+                }
+            )
 
         return errors, warnings
 
@@ -560,26 +599,32 @@ class EffectSizePlausibilityValidator(Validator):
         variance = claim.metadata.get("variance", claim.metadata.get("var"))
 
         if se is not None and se <= 0:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "issue": f"Standard error must be positive (got {se})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "issue": f"Standard error must be positive (got {se})",
+                }
+            )
 
         if variance is not None and variance < 0:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "issue": f"Variance cannot be negative (got {variance})",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "issue": f"Variance cannot be negative (got {variance})",
+                }
+            )
 
         # Cross-validate SE and variance
         if se is not None and variance is not None:
-            expected_var = se ** 2
+            expected_var = se**2
             tolerance = 0.01 * expected_var if expected_var > 0 else 0.01
             if abs(variance - expected_var) > tolerance:
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"SE ({se}) and variance ({variance}) inconsistent",
-                    "expected_variance": round(expected_var, 6),
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"SE ({se}) and variance ({variance}) inconsistent",
+                        "expected_variance": round(expected_var, 6),
+                    }
+                )
 
         return errors, warnings

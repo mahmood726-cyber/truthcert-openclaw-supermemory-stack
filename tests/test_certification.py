@@ -3,22 +3,20 @@ Tests for end-to-end certification.
 """
 
 import pytest
-from pathlib import Path
 
+from certifier.bundle import (
+    compute_bundle_id,
+    create_bundle,
+    load_bundle,
+)
+from certifier.constants import Severity
 from certifier.models import (
     NumericClaim,
     ScopeLock,
     ValidationSummary,
     ValidatorResult,
-    CertificationProfile,
-)
-from certifier.bundle import (
-    create_bundle,
-    load_bundle,
-    compute_bundle_id,
 )
 from certifier.signing import verify_signature
-from certifier.constants import Severity, BundleOutcome
 
 
 class TestBundleCreation:
@@ -84,7 +82,7 @@ class TestBundleCreation:
             blocking_count=1,
         )
 
-        bundle_path, result = create_bundle(
+        bundle_path, _result = create_bundle(
             claims=[memory_claim],
             scope_lock=sample_scope_lock,
             policy_id="silver",
@@ -125,7 +123,7 @@ class TestBundleVerification:
             has_warnings=False,
         )
 
-        bundle_path, receipt = create_bundle(
+        bundle_path, _receipt = create_bundle(
             claims=[sample_claim],
             scope_lock=sample_scope_lock,
             policy_id="silver",
@@ -157,7 +155,7 @@ class TestBundleVerification:
             has_warnings=False,
         )
 
-        bundle_path, receipt = create_bundle(
+        bundle_path, _receipt = create_bundle(
             claims=[sample_claim],
             scope_lock=sample_scope_lock,
             policy_id="silver",
@@ -179,7 +177,9 @@ class TestBundleVerification:
 class TestEndToEndCertification:
     """Test end-to-end certification flow."""
 
-    def test_valid_claim_produces_pass(self, sample_claim, sample_scope_lock, signing_keys, temp_dir):
+    def test_valid_claim_produces_pass(
+        self, sample_claim, sample_scope_lock, signing_keys, temp_dir
+    ):
         """Test that valid claim produces PASS bundle."""
         from certifier.validators import ValidatorRegistry
 
@@ -208,7 +208,7 @@ class TestEndToEndCertification:
             has_warnings=False,
         )
 
-        bundle_path, receipt = create_bundle(
+        bundle_path, _receipt = create_bundle(
             claims=[sample_claim],
             scope_lock=sample_scope_lock,
             policy_id="silver",
@@ -219,7 +219,9 @@ class TestEndToEndCertification:
         bundle_data = load_bundle(bundle_path)
         assert bundle_data["manifest"]["outcome"] == "PASS"
 
-    def test_memory_claim_produces_reject(self, memory_claim, sample_scope_lock, signing_keys, temp_dir):
+    def test_memory_claim_produces_reject(
+        self, memory_claim, sample_scope_lock, signing_keys, temp_dir
+    ):
         """Test that memory-citing claim produces REJECT bundle."""
         from certifier.validators import ValidatorRegistry
 
@@ -278,7 +280,7 @@ class TestSignatureRoundTrip:
 
     def test_tampered_manifest_fails_verification(self, signing_keys):
         """Test that tampered manifest fails signature verification."""
-        from certifier.signing import sign_manifest, verify_signature, VerificationError
+        from certifier.signing import VerificationError, sign_manifest, verify_signature
 
         manifest_data = {
             "bundle_id": "sha256:test123",
@@ -306,8 +308,8 @@ class TestNewValidatorsIntegration:
 
     def test_evidence_allowlist_blocks_file_scheme(self, sample_scope_lock):
         """Test that file:// scheme is blocked."""
+        from certifier.models import ClaimType, EvidenceLocator, EvidenceType
         from certifier.validators import EvidenceAllowlistValidator
-        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="file-scheme",
@@ -330,8 +332,8 @@ class TestNewValidatorsIntegration:
 
     def test_heterogeneity_validator_detects_invalid_i_squared(self, sample_scope_lock):
         """Test that I² > 100% is detected."""
+        from certifier.models import ClaimType, EvidenceLocator, EvidenceType
         from certifier.validators import HeterogeneityValidator
-        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="invalid-i2",
@@ -353,8 +355,8 @@ class TestNewValidatorsIntegration:
 
     def test_effect_size_validator_detects_negative_rr(self, sample_scope_lock):
         """Test that negative risk ratio is detected."""
+        from certifier.models import ClaimType, EvidenceLocator, EvidenceType
         from certifier.validators import EffectSizePlausibilityValidator
-        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="negative-rr",

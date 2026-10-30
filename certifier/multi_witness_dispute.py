@@ -15,15 +15,16 @@ TruthCert v3.1.0 Specification - Multi-Witness Protocol
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from .models import CertificationProfile, NumericClaim, ScopeLock
 
 
 class WitnessVerdict(str, Enum):
     """Possible witness verdicts."""
+
     AGREE = "agree"
     DISAGREE = "disagree"
     ABSTAIN = "abstain"
@@ -32,45 +33,51 @@ class WitnessVerdict(str, Enum):
 
 class DisputeResolution(str, Enum):
     """Dispute resolution outcomes."""
-    CONSENSUS = "consensus"          # All witnesses agree
-    MAJORITY = "majority"            # Majority agrees
+
+    CONSENSUS = "consensus"  # All witnesses agree
+    MAJORITY = "majority"  # Majority agrees
     SUPERMAJORITY = "supermajority"  # 2/3+ agree
-    DEADLOCK = "deadlock"            # No clear majority
-    INSUFFICIENT = "insufficient"     # Not enough witnesses
+    DEADLOCK = "deadlock"  # No clear majority
+    INSUFFICIENT = "insufficient"  # Not enough witnesses
 
 
 @dataclass
 class WitnessResult:
     """Result from a single witness verification."""
+
     witness_id: str
     verdict: WitnessVerdict
-    extracted_value: Optional[float] = None
-    confidence: Optional[float] = None
-    reasoning: Optional[str] = None
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    extracted_value: float | None = None
+    confidence: float | None = None
+    reasoning: str | None = None
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict = field(default_factory=dict)
 
     def compute_hash(self) -> str:
         """Compute hash of witness result for audit."""
-        canonical = json.dumps({
-            "witness_id": self.witness_id,
-            "verdict": self.verdict.value,
-            "extracted_value": self.extracted_value,
-            "confidence": self.confidence,
-        }, sort_keys=True)
+        canonical = json.dumps(
+            {
+                "witness_id": self.witness_id,
+                "verdict": self.verdict.value,
+                "extracted_value": self.extracted_value,
+                "confidence": self.confidence,
+            },
+            sort_keys=True,
+        )
         return f"sha256:{hashlib.sha256(canonical.encode()).hexdigest()}"
 
 
 @dataclass
 class DisputeRecord:
     """Record of a dispute and its resolution."""
+
     claim_id: str
     witnesses: list[WitnessResult]
     resolution: DisputeResolution
-    final_value: Optional[float] = None
+    final_value: float | None = None
     agreement_score: float = 0.0
     majority_threshold: float = 0.5
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     resolution_details: dict = field(default_factory=dict)
 
 
@@ -103,14 +110,15 @@ class MultiWitnessVerifier:
     def __init__(
         self,
         profile: CertificationProfile = CertificationProfile.SILVER,
-        custom_threshold: Optional[float] = None,
+        custom_threshold: float | None = None,
     ):
         self.profile = profile
         self.requirements = self.WITNESS_REQUIREMENTS[profile]
         if custom_threshold is not None and not (0 < custom_threshold <= 1):
             raise ValueError("Witness threshold must be in (0, 1]")
-        self.threshold = (custom_threshold if custom_threshold is not None
-                          else self.requirements["threshold"])
+        self.threshold = (
+            custom_threshold if custom_threshold is not None else self.requirements["threshold"]
+        )
 
     def verify_claim(
         self,
@@ -162,7 +170,8 @@ class MultiWitnessVerifier:
         # Abstention is not an independent affirmative vote; it must not meet
         # the minimum voting quorum, even when a report was submitted.
         active_votes = [
-            w for w in valid_witnesses
+            w
+            for w in valid_witnesses
             if w.verdict in (WitnessVerdict.AGREE, WitnessVerdict.DISAGREE)
         ]
         if len(active_votes) < self.requirements["min_witnesses"]:
@@ -192,8 +201,11 @@ class MultiWitnessVerifier:
             # Perfect consensus
             resolution = DisputeResolution.CONSENSUS
             final_value = self._compute_consensus_value(claim.value, agreeing)
-        elif (value_agreement and agreement_score >= self.threshold
-              and (self.profile != CertificationProfile.SILVER or agreement_score > 0.5)):
+        elif (
+            value_agreement
+            and agreement_score >= self.threshold
+            and (self.profile != CertificationProfile.SILVER or agreement_score > 0.5)
+        ):
             if agreement_score >= 2 / 3:
                 resolution = DisputeResolution.SUPERMAJORITY
             else:
@@ -229,10 +241,7 @@ class MultiWitnessVerifier:
         if not witnesses:
             return True  # No witnesses to disagree
 
-        extracted_values = [
-            w.extracted_value for w in witnesses
-            if w.extracted_value is not None
-        ]
+        extracted_values = [w.extracted_value for w in witnesses if w.extracted_value is not None]
 
         if not extracted_values:
             # No values extracted, assume agreement on verdict
@@ -310,7 +319,7 @@ class WitnessOrchestrator:
         Returns task specification for witness execution.
         """
         return {
-            "task_id": f"witness-{claim.claim_id}-{datetime.now(timezone.utc).isoformat()}",
+            "task_id": f"witness-{claim.claim_id}-{datetime.now(UTC).isoformat()}",
             "claim_id": claim.claim_id,
             "expected_value": claim.value,
             "expected_type": claim.claim_type.value,
@@ -370,12 +379,14 @@ def simulate_witness_verification(
         noise = random.gauss(0, claim.value * 0.0001) if claim.value != 0 else 0
         extracted = claim.value + noise if agrees else claim.value * 1.5
 
-        results.append(WitnessResult(
-            witness_id=f"witness-{i}",
-            verdict=WitnessVerdict.AGREE if agrees else WitnessVerdict.DISAGREE,
-            extracted_value=extracted,
-            confidence=0.95 if agrees else 0.3,
-            reasoning=f"Extracted value {'matches' if agrees else 'differs from'} claim",
-        ))
+        results.append(
+            WitnessResult(
+                witness_id=f"witness-{i}",
+                verdict=WitnessVerdict.AGREE if agrees else WitnessVerdict.DISAGREE,
+                extracted_value=extracted,
+                confidence=0.95 if agrees else 0.3,
+                reasoning=f"Extracted value {'matches' if agrees else 'differs from'} claim",
+            )
+        )
 
     return results

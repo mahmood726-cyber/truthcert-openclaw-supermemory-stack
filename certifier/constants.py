@@ -72,6 +72,7 @@ ATTEST_DIR: Final[str] = "attest"
 
 class CertificationProfile(str, Enum):
     """Certification assurance levels."""
+
     BRONZE = "BRONZE"
     SILVER = "SILVER"
     GOLD = "GOLD"
@@ -84,6 +85,7 @@ class CertificationProfile(str, Enum):
 
 class Severity(str, Enum):
     """Validator result severity levels."""
+
     INFO = "INFO"
     WARN = "WARN"
     BLOCK = "BLOCK"
@@ -96,6 +98,7 @@ class Severity(str, Enum):
 
 class BundleOutcome(str, Enum):
     """Certification outcomes."""
+
     PASS = "PASS"
     REJECT = "REJECT"
 

@@ -34,10 +34,13 @@ def _write_tar(path: Path, entries: list[tuple[str, str]]) -> None:
 
 def test_tarball_verification_uses_isolated_temp_directory(tmp_path):
     archive = tmp_path / "bundle_test.tar.gz"
-    _write_tar(archive, [
-        ("bundle_test", "directory"),
-        ("bundle_test/manifest.json", "file"),
-    ])
+    _write_tar(
+        archive,
+        [
+            ("bundle_test", "directory"),
+            ("bundle_test/manifest.json", "file"),
+        ],
+    )
     result = CliRunner().invoke(
         cli, ["verify", str(archive), "--no-check-signature", "--no-check-scope-lock"]
     )
@@ -71,9 +74,9 @@ def test_unsafe_tar_member_refused_without_parent_writes(tmp_path, entries):
     sentinel.write_text("untouched")
     _write_tar(archive, entries)
 
-    result = CliRunner().invoke(cli, [
-        "verify", str(archive), "--no-check-signature", "--no-check-scope-lock"
-    ])
+    result = CliRunner().invoke(
+        cli, ["verify", str(archive), "--no-check-signature", "--no-check-scope-lock"]
+    )
     assert result.exit_code != 0
     assert "Unsafe or invalid bundle archive" in result.output
     assert sentinel.read_text() == "untouched"

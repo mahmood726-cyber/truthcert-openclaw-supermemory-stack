@@ -9,12 +9,13 @@ Reference: Page MJ, et al. The PRISMA 2020 statement. BMJ 2021;372:n71
 
 import html
 from dataclasses import dataclass, field
-from typing import Any, Optional, List
 from enum import Enum
+from typing import Any
 
 
 class ScreeningPhase(str, Enum):
     """PRISMA screening phases."""
+
     IDENTIFICATION = "identification"
     SCREENING = "screening"
     ELIGIBILITY = "eligibility"
@@ -24,14 +25,16 @@ class ScreeningPhase(str, Enum):
 @dataclass
 class DatabaseSearch:
     """Records from a database search."""
+
     database_name: str
     records_identified: int
-    date_searched: Optional[str] = None
+    date_searched: str | None = None
 
 
 @dataclass
 class OtherSource:
     """Records from other sources."""
+
     source_name: str
     records_identified: int
 
@@ -39,14 +42,16 @@ class OtherSource:
 @dataclass
 class ScreeningRecord:
     """Record of screening decisions."""
+
     total_screened: int
     excluded: int
-    reason_excluded: Optional[str] = None
+    reason_excluded: str | None = None
 
 
 @dataclass
 class EligibilityRecord:
     """Record of eligibility assessment."""
+
     full_text_assessed: int
     excluded: int
     exclusion_reasons: dict[str, int] = field(default_factory=dict)
@@ -55,19 +60,21 @@ class EligibilityRecord:
 @dataclass
 class InclusionRecord:
     """Record of included studies."""
+
     studies_included: int
     reports_included: int
-    new_studies: Optional[int] = None  # For updates
-    new_reports: Optional[int] = None
+    new_studies: int | None = None  # For updates
+    new_reports: int | None = None
 
 
 @dataclass
 class PRISMAFlowData:
     """Complete PRISMA flow data."""
+
     # Identification
-    database_searches: List[DatabaseSearch] = field(default_factory=list)
-    register_searches: List[DatabaseSearch] = field(default_factory=list)
-    other_sources: List[OtherSource] = field(default_factory=list)
+    database_searches: list[DatabaseSearch] = field(default_factory=list)
+    register_searches: list[DatabaseSearch] = field(default_factory=list)
+    other_sources: list[OtherSource] = field(default_factory=list)
 
     # Before screening
     duplicates_removed: int = 0
@@ -103,6 +110,7 @@ class PRISMAFlowData:
 @dataclass
 class PRISMAConfig:
     """Configuration for PRISMA diagram appearance."""
+
     width: int = 900
     height: int = 800
     box_width: int = 200
@@ -120,10 +128,10 @@ class PRISMAConfig:
 
     # Colors
     identification_color: str = "#dbeafe"  # Light blue
-    screening_color: str = "#fef3c7"       # Light yellow
-    eligibility_color: str = "#d1fae5"     # Light green
-    included_color: str = "#e0e7ff"        # Light indigo
-    exclusion_color: str = "#fee2e2"       # Light red
+    screening_color: str = "#fef3c7"  # Light yellow
+    eligibility_color: str = "#d1fae5"  # Light green
+    included_color: str = "#e0e7ff"  # Light indigo
+    exclusion_color: str = "#fee2e2"  # Light red
     border_color: str = "#374151"
     text_color: str = "#111827"
     arrow_color: str = "#6b7280"
@@ -136,7 +144,7 @@ class PRISMAFlowGenerator:
     Following the PRISMA 2020 statement template.
     """
 
-    def __init__(self, config: Optional[PRISMAConfig] = None):
+    def __init__(self, config: PRISMAConfig | None = None):
         self.config = config or PRISMAConfig()
 
     def generate(self, data: PRISMAFlowData) -> str:
@@ -184,21 +192,27 @@ class PRISMAFlowGenerator:
         # Database searches (left column)
         total_database = sum(db.records_identified for db in data.database_searches)
         db_names = ", ".join(db.database_name for db in data.database_searches)
-        svg_parts.append(self._box(
-            150, y_ident,
-            f"Records identified from:\nDatabases (n={total_database})",
-            "identification",
-            subtitle=db_names[:30] if db_names else None
-        ))
+        svg_parts.append(
+            self._box(
+                150,
+                y_ident,
+                f"Records identified from:\nDatabases (n={total_database})",
+                "identification",
+                subtitle=db_names[:30] if db_names else None,
+            )
+        )
 
         # Register searches
         total_register = sum(db.records_identified for db in data.register_searches)
         if total_register > 0:
-            svg_parts.append(self._box(
-                150, y_ident + c.box_height + 10,
-                f"Registers (n={total_register})",
-                "identification"
-            ))
+            svg_parts.append(
+                self._box(
+                    150,
+                    y_ident + c.box_height + 10,
+                    f"Registers (n={total_register})",
+                    "identification",
+                )
+            )
 
         # Other sources (right column)
         total_other = sum(s.records_identified for s in data.other_sources)
@@ -208,22 +222,25 @@ class PRISMAFlowGenerator:
                 other_text += f"\nPrevious studies (n={data.previous_studies})"
             if total_other > 0:
                 other_text += f"\nOther sources (n={total_other})"
-            svg_parts.append(self._box(
-                600, y_ident,
-                other_text,
-                "identification"
-            ))
+            svg_parts.append(self._box(600, y_ident, other_text, "identification"))
 
         # BEFORE SCREENING
         y_before = y_ident + c.box_height + c.vertical_gap + 40
 
         # Duplicates removed
-        svg_parts.append(self._box(
-            375, y_before,
-            f"Records removed before screening:\nDuplicates (n={data.duplicates_removed})"
-            + (f"\nAutomation (n={data.automation_excluded})" if data.automation_excluded else ""),
-            "exclusion"
-        ))
+        svg_parts.append(
+            self._box(
+                375,
+                y_before,
+                f"Records removed before screening:\nDuplicates (n={data.duplicates_removed})"
+                + (
+                    f"\nAutomation (n={data.automation_excluded})"
+                    if data.automation_excluded
+                    else ""
+                ),
+                "exclusion",
+            )
+        )
 
         # Arrow from identification to before screening
         svg_parts.append(self._arrow(250, y_ident + c.box_height, 375, y_before))
@@ -234,65 +251,105 @@ class PRISMAFlowGenerator:
         y_screen = y_before + c.box_height + c.vertical_gap
 
         # Records screened
-        svg_parts.append(self._box(
-            150, y_screen,
-            f"Records screened\n(n={data.title_abstract_screened})",
-            "screening"
-        ))
+        svg_parts.append(
+            self._box(
+                150, y_screen, f"Records screened\n(n={data.title_abstract_screened})", "screening"
+            )
+        )
 
         # Records excluded
-        svg_parts.append(self._box(
-            450, y_screen,
-            f"Records excluded\n(n={data.title_abstract_excluded})",
-            "exclusion"
-        ))
+        svg_parts.append(
+            self._box(
+                450, y_screen, f"Records excluded\n(n={data.title_abstract_excluded})", "exclusion"
+            )
+        )
 
         # Arrows
         svg_parts.append(self._arrow(375, y_before + c.box_height, 250, y_screen))
-        svg_parts.append(self._arrow(250 + c.box_width, y_screen + c.box_height / 2, 450, y_screen + c.box_height / 2, horizontal=True))
+        svg_parts.append(
+            self._arrow(
+                250 + c.box_width,
+                y_screen + c.box_height / 2,
+                450,
+                y_screen + c.box_height / 2,
+                horizontal=True,
+            )
+        )
 
         # ELIGIBILITY SECTION
         y_elig = y_screen + c.box_height + c.vertical_gap
 
         # Full text sought
-        svg_parts.append(self._box(
-            150, y_elig,
-            f"Reports sought for retrieval\n(n={data.full_text_sought})",
-            "eligibility"
-        ))
+        svg_parts.append(
+            self._box(
+                150,
+                y_elig,
+                f"Reports sought for retrieval\n(n={data.full_text_sought})",
+                "eligibility",
+            )
+        )
 
         # Not retrieved
         if data.full_text_not_retrieved > 0:
-            reasons = "\n".join(f"{r}: {n}" for r, n in list(data.full_text_not_retrieved_reasons.items())[:3])
-            svg_parts.append(self._box(
-                450, y_elig,
-                f"Reports not retrieved\n(n={data.full_text_not_retrieved})",
-                "exclusion",
-                subtitle=reasons if reasons else None
-            ))
-            svg_parts.append(self._arrow(250 + c.box_width, y_elig + c.box_height / 2, 450, y_elig + c.box_height / 2, horizontal=True))
+            reasons = "\n".join(
+                f"{r}: {n}" for r, n in list(data.full_text_not_retrieved_reasons.items())[:3]
+            )
+            svg_parts.append(
+                self._box(
+                    450,
+                    y_elig,
+                    f"Reports not retrieved\n(n={data.full_text_not_retrieved})",
+                    "exclusion",
+                    subtitle=reasons if reasons else None,
+                )
+            )
+            svg_parts.append(
+                self._arrow(
+                    250 + c.box_width,
+                    y_elig + c.box_height / 2,
+                    450,
+                    y_elig + c.box_height / 2,
+                    horizontal=True,
+                )
+            )
 
         svg_parts.append(self._arrow(250, y_screen + c.box_height, 250, y_elig))
 
         # Full text assessed
         y_assess = y_elig + c.box_height + c.vertical_gap
 
-        svg_parts.append(self._box(
-            150, y_assess,
-            f"Reports assessed for eligibility\n(n={data.full_text_assessed})",
-            "eligibility"
-        ))
+        svg_parts.append(
+            self._box(
+                150,
+                y_assess,
+                f"Reports assessed for eligibility\n(n={data.full_text_assessed})",
+                "eligibility",
+            )
+        )
 
         # Excluded with reasons
         if data.full_text_excluded > 0:
-            reasons_text = "\n".join(f"{r}: {n}" for r, n in list(data.full_text_exclusion_reasons.items())[:4])
-            svg_parts.append(self._box(
-                450, y_assess,
-                f"Reports excluded (n={data.full_text_excluded})",
-                "exclusion",
-                subtitle=reasons_text if reasons_text else None
-            ))
-            svg_parts.append(self._arrow(250 + c.box_width, y_assess + c.box_height / 2, 450, y_assess + c.box_height / 2, horizontal=True))
+            reasons_text = "\n".join(
+                f"{r}: {n}" for r, n in list(data.full_text_exclusion_reasons.items())[:4]
+            )
+            svg_parts.append(
+                self._box(
+                    450,
+                    y_assess,
+                    f"Reports excluded (n={data.full_text_excluded})",
+                    "exclusion",
+                    subtitle=reasons_text if reasons_text else None,
+                )
+            )
+            svg_parts.append(
+                self._arrow(
+                    250 + c.box_width,
+                    y_assess + c.box_height / 2,
+                    450,
+                    y_assess + c.box_height / 2,
+                    horizontal=True,
+                )
+            )
 
         svg_parts.append(self._arrow(250, y_elig + c.box_height, 250, y_assess))
 
@@ -300,23 +357,41 @@ class PRISMAFlowGenerator:
         y_incl = y_assess + c.box_height + c.vertical_gap
 
         # Studies in review
-        svg_parts.append(self._box(
-            150, y_incl,
-            f"Studies included in review\n(n={data.studies_included_review})"
-            + (f"\nReports (n={data.reports_included_review})" if data.reports_included_review != data.studies_included_review else ""),
-            "included"
-        ))
+        svg_parts.append(
+            self._box(
+                150,
+                y_incl,
+                f"Studies included in review\n(n={data.studies_included_review})"
+                + (
+                    f"\nReports (n={data.reports_included_review})"
+                    if data.reports_included_review != data.studies_included_review
+                    else ""
+                ),
+                "included",
+            )
+        )
 
         svg_parts.append(self._arrow(250, y_assess + c.box_height, 250, y_incl))
 
         # Studies in synthesis
         if data.studies_included_synthesis > 0:
-            svg_parts.append(self._box(
-                450, y_incl,
-                f"Studies in quantitative\nsynthesis (meta-analysis)\n(n={data.studies_included_synthesis})",
-                "included"
-            ))
-            svg_parts.append(self._arrow(250 + c.box_width, y_incl + c.box_height / 2, 450, y_incl + c.box_height / 2, horizontal=True))
+            svg_parts.append(
+                self._box(
+                    450,
+                    y_incl,
+                    f"Studies in quantitative\nsynthesis (meta-analysis)\n(n={data.studies_included_synthesis})",
+                    "included",
+                )
+            )
+            svg_parts.append(
+                self._arrow(
+                    250 + c.box_width,
+                    y_incl + c.box_height / 2,
+                    450,
+                    y_incl + c.box_height / 2,
+                    horizontal=True,
+                )
+            )
 
         svg_parts.append("</svg>")
         return "\n".join(svg_parts)
@@ -330,7 +405,7 @@ class PRISMAFlowGenerator:
     def _svg_styles(self) -> str:
         """Generate SVG styles."""
         c = self.config
-        return f'''
+        return f"""
         <style>
             .prisma-flow {{
                 font-family: {c.font_family};
@@ -376,7 +451,7 @@ class PRISMAFlowGenerator:
                 marker-end: url(#arrowhead);
             }}
         </style>
-        '''
+        """
 
     def _svg_defs(self) -> str:
         """Generate SVG definitions (arrowhead)."""
@@ -396,7 +471,7 @@ class PRISMAFlowGenerator:
         y: float,
         text: str,
         box_class: str,
-        subtitle: Optional[str] = None,
+        subtitle: str | None = None,
     ) -> str:
         """Generate a box with text."""
         c = self.config
@@ -412,10 +487,14 @@ class PRISMAFlowGenerator:
         start_y = y + (c.box_height - total_height) / 2 + line_height / 2
 
         parts = [
-            f'<rect x="{x}" y="{y}" width="{c.box_width}" height="{c.box_height}" '
-            f'rx="{c.box_radius}" class="{box_class}"/>',
-            f'<rect x="{x}" y="{y}" width="{c.box_width}" height="{c.box_height}" '
-            f'rx="{c.box_radius}" class="box-border"/>',
+            (
+                f'<rect x="{x}" y="{y}" width="{c.box_width}" height="{c.box_height}" '
+                f'rx="{c.box_radius}" class="{box_class}"/>'
+            ),
+            (
+                f'<rect x="{x}" y="{y}" width="{c.box_width}" height="{c.box_height}" '
+                f'rx="{c.box_radius}" class="box-border"/>'
+            ),
         ]
 
         # Main text lines
@@ -467,19 +546,23 @@ def create_prisma_from_dict(data: dict[str, Any]) -> PRISMAFlowData:
     # Parse database searches
     database_searches = []
     for db in data.get("database_searches", []):
-        database_searches.append(DatabaseSearch(
-            database_name=db.get("name", "Database"),
-            records_identified=db.get("records", 0),
-            date_searched=db.get("date"),
-        ))
+        database_searches.append(
+            DatabaseSearch(
+                database_name=db.get("name", "Database"),
+                records_identified=db.get("records", 0),
+                date_searched=db.get("date"),
+            )
+        )
 
     # Parse other sources
     other_sources = []
     for src in data.get("other_sources", []):
-        other_sources.append(OtherSource(
-            source_name=src.get("name", "Other"),
-            records_identified=src.get("records", 0),
-        ))
+        other_sources.append(
+            OtherSource(
+                source_name=src.get("name", "Other"),
+                records_identified=src.get("records", 0),
+            )
+        )
 
     return PRISMAFlowData(
         database_searches=database_searches,

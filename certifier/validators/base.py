@@ -2,12 +2,12 @@
 Base validator classes and registry.
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Optional, Type
 import time
+from abc import ABC, abstractmethod
+from typing import Any, ClassVar
 
 from ..constants import Severity
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ValidatorConfig
+from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 
 
 class Validator(ABC):
@@ -17,7 +17,7 @@ class Validator(ABC):
     description: str = "Base validator"
     default_severity: Severity = Severity.BLOCK
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         self.config = config or ValidatorConfig(name=self.name)
         self.severity = config.severity if config else self.default_severity
 
@@ -39,7 +39,6 @@ class Validator(ABC):
         Returns:
             ValidatorResult with pass/fail status and details
         """
-        pass
 
     def run(
         self,
@@ -52,12 +51,12 @@ class Validator(ABC):
 
         try:
             result = self.validate(claims, scope_lock, context)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- fail-closed verification boundary
             result = ValidatorResult(
                 validator_name=self.name,
                 passed=False,
                 severity=self.severity,
-                message=f"Validator error: {str(e)}",
+                message=f"Validator error: {e!s}",
                 details={"error": str(e), "error_type": type(e).__name__},
             )
 
@@ -70,16 +69,16 @@ class Validator(ABC):
 class ValidatorRegistry:
     """Registry of available validators."""
 
-    _validators: dict[str, Type[Validator]] = {}
+    _validators: ClassVar[dict[str, type[Validator]]] = {}
 
     @classmethod
-    def register(cls, validator_class: Type[Validator]) -> Type[Validator]:
+    def register(cls, validator_class: type[Validator]) -> type[Validator]:
         """Register a validator class."""
         cls._validators[validator_class.name] = validator_class
         return validator_class
 
     @classmethod
-    def get(cls, name: str) -> Optional[Type[Validator]]:
+    def get(cls, name: str) -> type[Validator] | None:
         """Get a validator class by name."""
         return cls._validators.get(name)
 
@@ -87,8 +86,8 @@ class ValidatorRegistry:
     def get_instance(
         cls,
         name: str,
-        config: Optional[ValidatorConfig] = None,
-    ) -> Optional[Validator]:
+        config: ValidatorConfig | None = None,
+    ) -> Validator | None:
         """Get a validator instance by name."""
         validator_class = cls.get(name)
         if validator_class:

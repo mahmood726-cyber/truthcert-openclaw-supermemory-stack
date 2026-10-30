@@ -20,26 +20,55 @@ from ..constants import Severity
 from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
-
 # Only statistics interpreted by this validator, not arbitrary free-text metadata.
 # An explicitly supplied malformed statistic must not be treated as missing.
-_NUMERIC_BIAS_STATS = frozenset({
-    "egger_intercept", "egger_b0", "egger_int", "egger_pvalue", "egger_p",
-    "egger_se", "egger_stderr", "egger_t", "egger_tstat",
-    "begg_tau", "kendall_tau", "tau", "begg_z", "begg_zstat",
-    "begg_pvalue", "begg_p",
-    "rosenthal_n", "rosenthal_fsn", "fail_safe_n", "fsn",
-    "orwin_n", "orwin_fsn", "k", "n_studies", "num_studies",
-    "imputed_studies", "tf_imputed", "trimfill_k0",
-    "original_estimate", "unadjusted_estimate",
-    "adjusted_estimate", "tf_estimate", "trimfill_estimate",
-    "peters_p", "peters_pvalue", "harbord_p", "harbord_pvalue",
-})
+_NUMERIC_BIAS_STATS = frozenset(
+    {
+        "egger_intercept",
+        "egger_b0",
+        "egger_int",
+        "egger_pvalue",
+        "egger_p",
+        "egger_se",
+        "egger_stderr",
+        "egger_t",
+        "egger_tstat",
+        "begg_tau",
+        "kendall_tau",
+        "tau",
+        "begg_z",
+        "begg_zstat",
+        "begg_pvalue",
+        "begg_p",
+        "rosenthal_n",
+        "rosenthal_fsn",
+        "fail_safe_n",
+        "fsn",
+        "orwin_n",
+        "orwin_fsn",
+        "k",
+        "n_studies",
+        "num_studies",
+        "imputed_studies",
+        "tf_imputed",
+        "trimfill_k0",
+        "original_estimate",
+        "unadjusted_estimate",
+        "adjusted_estimate",
+        "tf_estimate",
+        "trimfill_estimate",
+        "peters_p",
+        "peters_pvalue",
+        "harbord_p",
+        "harbord_pvalue",
+    }
+)
 
 
 @dataclass
 class PublicationBiasBounds:
     """Plausibility bounds for publication bias statistics."""
+
     # P-values must be 0-1
     p_value_min: float = 0.0
     p_value_max: float = 1.0
@@ -135,18 +164,22 @@ class PublicationBiasValidator(Validator):
             # Check study count
             k = self._get_stat(claim, ["k", "n_studies", "num_studies"])
             if k is not None and k < self.MIN_STUDIES_FOR_BIAS_TEST:
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"Publication bias tests have low power with k={k} studies",
-                    "recommendation": f"At least {self.MIN_STUDIES_FOR_BIAS_TEST} studies recommended",
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"Publication bias tests have low power with k={k} studies",
+                        "recommendation": f"At least {self.MIN_STUDIES_FOR_BIAS_TEST} studies recommended",
+                    }
+                )
 
         passed = len(errors) == 0
 
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"Validated {validated_count} publication bias statistics"
                 if passed
@@ -173,27 +206,48 @@ class PublicationBiasValidator(Validator):
                 or not isinstance(value, (int, float))
                 or not math.isfinite(value)
             ):
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": raw_key,
-                    "issue": "Declared publication-bias statistic is not a finite numeric value",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": raw_key,
+                        "issue": "Declared publication-bias statistic is not a finite numeric value",
+                    }
+                )
         return errors
 
     def _is_bias_claim(self, claim: NumericClaim) -> bool:
         """Check if claim contains publication bias statistics."""
         bias_keys = {
             # Egger's test
-            "egger_intercept", "egger_pvalue", "egger_p", "egger_se", "egger_t",
+            "egger_intercept",
+            "egger_pvalue",
+            "egger_p",
+            "egger_se",
+            "egger_t",
             # Begg's test
-            "begg_z", "begg_pvalue", "begg_p", "begg_tau", "kendall_tau",
+            "begg_z",
+            "begg_pvalue",
+            "begg_p",
+            "begg_tau",
+            "kendall_tau",
             # Fail-safe N
-            "fail_safe_n", "rosenthal_n", "orwin_n", "fsn",
+            "fail_safe_n",
+            "rosenthal_n",
+            "orwin_n",
+            "fsn",
             # Trim-and-fill
-            "trim_fill", "imputed_studies", "tf_estimate", "adjusted_estimate",
+            "trim_fill",
+            "imputed_studies",
+            "tf_estimate",
+            "adjusted_estimate",
             # Funnel plot
-            "funnel_asymmetry", "peters_test", "harbord_test",
-            "peters_p", "peters_pvalue", "harbord_p", "harbord_pvalue",
+            "funnel_asymmetry",
+            "peters_test",
+            "harbord_test",
+            "peters_p",
+            "peters_pvalue",
+            "harbord_p",
+            "harbord_pvalue",
             # General
             "publication_bias",
         }
@@ -211,59 +265,69 @@ class PublicationBiasValidator(Validator):
         t_stat = self._get_stat(claim, ["egger_t", "egger_tstat"])
 
         # Validate p-value
-        if p_value is not None:
-            if p_value < self.bounds.p_value_min or p_value > self.bounds.p_value_max:
-                errors.append({
+        if (p_value is not None) and (
+            p_value < self.bounds.p_value_min or p_value > self.bounds.p_value_max
+        ):
+            errors.append(
+                {
                     "claim_id": claim.claim_id,
                     "test": "Egger's",
                     "statistic": "p-value",
                     "value": p_value,
                     "issue": f"P-value must be between 0 and 1 (got {p_value})",
-                })
+                }
+            )
 
         # Validate intercept plausibility
-        if intercept is not None:
-            if abs(intercept) > self.bounds.egger_intercept_extreme:
-                warnings.append({
+        if (intercept is not None) and (abs(intercept) > self.bounds.egger_intercept_extreme):
+            warnings.append(
+                {
                     "claim_id": claim.claim_id,
                     "test": "Egger's",
                     "statistic": "intercept",
                     "value": intercept,
                     "issue": f"Extreme intercept value (|{intercept}| > {self.bounds.egger_intercept_extreme})",
                     "interpretation": "May indicate severe bias or data issues",
-                })
+                }
+            )
 
         # Validate SE is positive
         if se is not None and se <= 0:
-            errors.append({
-                "claim_id": claim.claim_id,
-                "test": "Egger's",
-                "statistic": "SE",
-                "value": se,
-                "issue": "Standard error must be positive",
-            })
+            errors.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "test": "Egger's",
+                    "statistic": "SE",
+                    "value": se,
+                    "issue": "Standard error must be positive",
+                }
+            )
 
         # Cross-validate t-statistic
         if intercept is not None and se is not None and se > 0 and t_stat is not None:
             expected_t = intercept / se
             tolerance = 0.1 * abs(expected_t) if expected_t != 0 else 0.1
             if abs(t_stat - expected_t) > tolerance:
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "test": "Egger's",
-                    "issue": f"t-statistic ({t_stat}) inconsistent with intercept/SE",
-                    "expected_t": round(expected_t, 4),
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "test": "Egger's",
+                        "issue": f"t-statistic ({t_stat}) inconsistent with intercept/SE",
+                        "expected_t": round(expected_t, 4),
+                    }
+                )
 
         # Interpretation warning for significant Egger's test
         if p_value is not None and p_value < 0.10 and intercept is not None:
             direction = "toward smaller studies" if intercept > 0 else "toward larger studies"
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "test": "Egger's",
-                "issue": f"Significant Egger's test (p={p_value}) suggests funnel plot asymmetry",
-                "direction": direction,
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "test": "Egger's",
+                    "issue": f"Significant Egger's test (p={p_value}) suggests funnel plot asymmetry",
+                    "direction": direction,
+                }
+            )
 
         return errors, warnings
 
@@ -276,26 +340,32 @@ class PublicationBiasValidator(Validator):
         p_value = self._get_stat(claim, ["begg_pvalue", "begg_p"])
 
         # Validate Kendall's tau bounds
-        if kendall_tau is not None:
-            if kendall_tau < self.bounds.correlation_min or kendall_tau > self.bounds.correlation_max:
-                errors.append({
+        if kendall_tau is not None and (
+            kendall_tau < self.bounds.correlation_min or kendall_tau > self.bounds.correlation_max
+        ):
+            errors.append(
+                {
                     "claim_id": claim.claim_id,
                     "test": "Begg's",
                     "statistic": "Kendall's tau",
                     "value": kendall_tau,
                     "issue": f"Kendall's tau must be between -1 and 1 (got {kendall_tau})",
-                })
+                }
+            )
 
         # Validate p-value
-        if p_value is not None:
-            if p_value < self.bounds.p_value_min or p_value > self.bounds.p_value_max:
-                errors.append({
+        if (p_value is not None) and (
+            p_value < self.bounds.p_value_min or p_value > self.bounds.p_value_max
+        ):
+            errors.append(
+                {
                     "claim_id": claim.claim_id,
                     "test": "Begg's",
                     "statistic": "p-value",
                     "value": p_value,
                     "issue": f"P-value must be between 0 and 1 (got {p_value})",
-                })
+                }
+            )
 
         return errors, warnings
 
@@ -311,32 +381,38 @@ class PublicationBiasValidator(Validator):
             if value is not None:
                 # Must be non-negative
                 if value < self.bounds.fail_safe_n_min:
-                    errors.append({
-                        "claim_id": claim.claim_id,
-                        "test": f"{name} fail-safe N",
-                        "value": value,
-                        "issue": f"Fail-safe N must be non-negative (got {value})",
-                    })
+                    errors.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "test": f"{name} fail-safe N",
+                            "value": value,
+                            "issue": f"Fail-safe N must be non-negative (got {value})",
+                        }
+                    )
 
                 # Must be integer (or close to it)
                 if value >= 0 and abs(value - round(value)) > 0.01:
-                    warnings.append({
-                        "claim_id": claim.claim_id,
-                        "test": f"{name} fail-safe N",
-                        "value": value,
-                        "issue": f"Fail-safe N should be an integer (got {value})",
-                    })
+                    warnings.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "test": f"{name} fail-safe N",
+                            "value": value,
+                            "issue": f"Fail-safe N should be an integer (got {value})",
+                        }
+                    )
 
                 # Interpretation for small fail-safe N
                 k = self._get_stat(claim, ["k", "n_studies"])
                 if k is not None and value < 5 * k + 10:
-                    warnings.append({
-                        "claim_id": claim.claim_id,
-                        "test": f"{name} fail-safe N",
-                        "value": value,
-                        "issue": f"Fail-safe N ({value}) < 5k + 10 ({5 * k + 10})",
-                        "interpretation": "Results may not be robust to publication bias",
-                    })
+                    warnings.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "test": f"{name} fail-safe N",
+                            "value": value,
+                            "issue": f"Fail-safe N ({value}) < 5k + 10 ({5 * k + 10})",
+                            "interpretation": "Results may not be robust to publication bias",
+                        }
+                    )
 
         return errors, warnings
 
@@ -347,42 +423,51 @@ class PublicationBiasValidator(Validator):
 
         imputed = self._get_stat(claim, ["imputed_studies", "tf_imputed", "trimfill_k0"])
         original_estimate = self._get_stat(claim, ["original_estimate", "unadjusted_estimate"])
-        adjusted_estimate = self._get_stat(claim, ["adjusted_estimate", "tf_estimate", "trimfill_estimate"])
+        adjusted_estimate = self._get_stat(
+            claim, ["adjusted_estimate", "tf_estimate", "trimfill_estimate"]
+        )
         side = claim.metadata.get("trimfill_side", claim.metadata.get("tf_side"))
 
         # Imputed studies must be non-negative
         if imputed is not None:
             if imputed < self.bounds.imputed_studies_min:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "test": "Trim-and-fill",
-                    "statistic": "imputed studies",
-                    "value": imputed,
-                    "issue": f"Number of imputed studies must be non-negative (got {imputed})",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "test": "Trim-and-fill",
+                        "statistic": "imputed studies",
+                        "value": imputed,
+                        "issue": f"Number of imputed studies must be non-negative (got {imputed})",
+                    }
+                )
 
-            if imputed > 0 and original_estimate is not None and adjusted_estimate is not None:
-                # Adjusted should typically be attenuated (closer to null)
-                # This is a warning, not an error, as exceptions exist
-                if abs(adjusted_estimate) > abs(original_estimate):
-                    warnings.append({
+            # Adjusted should typically be attenuated (closer to null)
+            # This is a warning, not an error, as exceptions exist
+            if (
+                imputed > 0 and original_estimate is not None and (adjusted_estimate is not None)
+            ) and (abs(adjusted_estimate) > abs(original_estimate)):
+                warnings.append(
+                    {
                         "claim_id": claim.claim_id,
                         "test": "Trim-and-fill",
                         "issue": "Adjusted estimate larger than original",
                         "original": original_estimate,
                         "adjusted": adjusted_estimate,
                         "interpretation": "Unusual pattern; verify imputation side",
-                    })
+                    }
+                )
 
         # Validate side specification
         valid_sides = ["left", "right", "both", "L", "R", "B"]
         if side is not None and str(side) not in valid_sides:
-            warnings.append({
-                "claim_id": claim.claim_id,
-                "test": "Trim-and-fill",
-                "issue": f"Unknown trimfill side: {side}",
-                "valid_options": valid_sides,
-            })
+            warnings.append(
+                {
+                    "claim_id": claim.claim_id,
+                    "test": "Trim-and-fill",
+                    "issue": f"Unknown trimfill side: {side}",
+                    "valid_options": valid_sides,
+                }
+            )
 
         return errors, warnings
 
@@ -393,27 +478,33 @@ class PublicationBiasValidator(Validator):
 
         # Peters test (weighted regression)
         peters_p = self._get_stat(claim, ["peters_p", "peters_pvalue"])
-        if peters_p is not None:
-            if peters_p < self.bounds.p_value_min or peters_p > self.bounds.p_value_max:
-                errors.append({
+        if (peters_p is not None) and (
+            peters_p < self.bounds.p_value_min or peters_p > self.bounds.p_value_max
+        ):
+            errors.append(
+                {
                     "claim_id": claim.claim_id,
                     "test": "Peters",
                     "statistic": "p-value",
                     "value": peters_p,
                     "issue": f"P-value must be between 0 and 1 (got {peters_p})",
-                })
+                }
+            )
 
         # Harbord test (for binary outcomes)
         harbord_p = self._get_stat(claim, ["harbord_p", "harbord_pvalue"])
-        if harbord_p is not None:
-            if harbord_p < self.bounds.p_value_min or harbord_p > self.bounds.p_value_max:
-                errors.append({
+        if (harbord_p is not None) and (
+            harbord_p < self.bounds.p_value_min or harbord_p > self.bounds.p_value_max
+        ):
+            errors.append(
+                {
                     "claim_id": claim.claim_id,
                     "test": "Harbord",
                     "statistic": "p-value",
                     "value": harbord_p,
                     "issue": f"P-value must be between 0 and 1 (got {harbord_p})",
-                })
+                }
+            )
 
         return errors, warnings
 
@@ -429,9 +520,10 @@ class PublicationBiasValidator(Validator):
             # Try with variations
             for k, v in claim.metadata.items():
                 k_normalized = k.lower().replace("-", "_").replace(" ", "_")
-                if k_normalized == key.lower():
-                    if isinstance(v, (int, float)) and not math.isnan(v):
-                        return float(v)
+                if (k_normalized == key.lower()) and (
+                    isinstance(v, (int, float)) and (not math.isnan(v))
+                ):
+                    return float(v)
 
         return None
 
@@ -449,7 +541,7 @@ def compute_rosenthal_fail_safe_n(z_values: list[float], alpha: float = 0.05) ->
     Returns:
         Number of null studies needed to make result non-significant
     """
-    import scipy.stats as stats
+    from scipy import stats
 
     k = len(z_values)
     sum_z = sum(z_values)
@@ -495,4 +587,6 @@ def interpret_publication_bias(
     elif len(concerns) == 1:
         return f"Possible publication bias: {concerns[0]}"
     else:
-        return "Multiple indicators suggest publication bias:\n" + "\n".join(f"  - {c}" for c in concerns)
+        return "Multiple indicators suggest publication bias:\n" + "\n".join(
+            f"  - {c}" for c in concerns
+        )
