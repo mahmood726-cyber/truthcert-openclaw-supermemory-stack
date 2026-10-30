@@ -13,12 +13,28 @@ This is a COMPLETE implementation with full validation logic.
 """
 
 import math
-from typing import Any, Optional
 from dataclasses import dataclass
+from typing import Any
 
 from ..constants import Severity
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ClaimType, ValidatorConfig
+from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
+
+
+# Only statistics interpreted by this validator, not arbitrary free-text metadata.
+# An explicitly supplied malformed statistic must not be treated as missing.
+_NUMERIC_BIAS_STATS = frozenset({
+    "egger_intercept", "egger_b0", "egger_int", "egger_pvalue", "egger_p",
+    "egger_se", "egger_stderr", "egger_t", "egger_tstat",
+    "begg_tau", "kendall_tau", "tau", "begg_z", "begg_zstat",
+    "begg_pvalue", "begg_p",
+    "rosenthal_n", "rosenthal_fsn", "fail_safe_n", "fsn",
+    "orwin_n", "orwin_fsn", "k", "n_studies", "num_studies",
+    "imputed_studies", "tf_imputed", "trimfill_k0",
+    "original_estimate", "unadjusted_estimate",
+    "adjusted_estimate", "tf_estimate", "trimfill_estimate",
+    "peters_p", "peters_pvalue", "harbord_p", "harbord_pvalue",
+})
 
 
 @dataclass
@@ -64,14 +80,13 @@ class PublicationBiasValidator(Validator):
     # Minimum studies for publication bias tests
     MIN_STUDIES_FOR_BIAS_TEST = 10
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         self.bounds = PublicationBiasBounds()
         # Get custom params from config
         params = config.params if config else {}
-        if params:
-            if "min_studies" in params:
-                self.MIN_STUDIES_FOR_BIAS_TEST = params["min_studies"]
+        if params and "min_studies" in params:
+            self.MIN_STUDIES_FOR_BIAS_TEST = params["min_studies"]
 
     def validate(
         self,
@@ -90,6 +105,7 @@ class PublicationBiasValidator(Validator):
                 continue
 
             validated_count += 1
+            errors.extend(self._validate_numeric_metadata(claim))
 
             # Validate Egger's test
             egger_errors, egger_warnings = self._validate_eggers_test(claim)
@@ -144,6 +160,26 @@ class PublicationBiasValidator(Validator):
             },
         )
 
+    @staticmethod
+    def _validate_numeric_metadata(claim: NumericClaim) -> list[dict]:
+        """Refuse malformed declared statistics; never silently treat them as absent."""
+        errors = []
+        for raw_key, value in claim.metadata.items():
+            key = raw_key.lower().replace("-", "_").replace(" ", "_")
+            if key not in _NUMERIC_BIAS_STATS:
+                continue
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+            ):
+                errors.append({
+                    "claim_id": claim.claim_id,
+                    "statistic": raw_key,
+                    "issue": "Declared publication-bias statistic is not a finite numeric value",
+                })
+        return errors
+
     def _is_bias_claim(self, claim: NumericClaim) -> bool:
         """Check if claim contains publication bias statistics."""
         bias_keys = {
@@ -157,10 +193,11 @@ class PublicationBiasValidator(Validator):
             "trim_fill", "imputed_studies", "tf_estimate", "adjusted_estimate",
             # Funnel plot
             "funnel_asymmetry", "peters_test", "harbord_test",
+            "peters_p", "peters_pvalue", "harbord_p", "harbord_pvalue",
             # General
             "publication_bias",
         }
-        claim_keys = set(k.lower().replace("-", "_") for k in claim.metadata.keys())
+        claim_keys = {k.lower().replace("-", "_").replace(" ", "_") for k in claim.metadata}
         return bool(bias_keys & claim_keys)
 
     def _validate_eggers_test(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
@@ -236,7 +273,6 @@ class PublicationBiasValidator(Validator):
         warnings = []
 
         kendall_tau = self._get_stat(claim, ["begg_tau", "kendall_tau", "tau"])
-        z_stat = self._get_stat(claim, ["begg_z", "begg_zstat"])
         p_value = self._get_stat(claim, ["begg_pvalue", "begg_p"])
 
         # Validate Kendall's tau bounds
@@ -268,7 +304,7 @@ class PublicationBiasValidator(Validator):
         errors = []
         warnings = []
 
-        rosenthal_n = self._get_stat(claim, ["rosenthal_n", "rosenthal_fsn", "fail_safe_n"])
+        rosenthal_n = self._get_stat(claim, ["rosenthal_n", "rosenthal_fsn", "fail_safe_n", "fsn"])
         orwin_n = self._get_stat(claim, ["orwin_n", "orwin_fsn"])
 
         for name, value in [("Rosenthal's", rosenthal_n), ("Orwin's", orwin_n)]:
@@ -381,7 +417,7 @@ class PublicationBiasValidator(Validator):
 
         return errors, warnings
 
-    def _get_stat(self, claim: NumericClaim, keys: list[str]) -> Optional[float]:
+    def _get_stat(self, claim: NumericClaim, keys: list[str]) -> float | None:
         """Get a statistic from claim metadata by trying multiple keys."""
         for key in keys:
             # Try exact key
@@ -424,9 +460,9 @@ def compute_rosenthal_fail_safe_n(z_values: list[float], alpha: float = 0.05) ->
 
 
 def interpret_publication_bias(
-    egger_p: Optional[float] = None,
-    begg_p: Optional[float] = None,
-    fail_safe_n: Optional[int] = None,
+    egger_p: float | None = None,
+    begg_p: float | None = None,
+    fail_safe_n: int | None = None,
     k: int = 0,
 ) -> str:
     """
