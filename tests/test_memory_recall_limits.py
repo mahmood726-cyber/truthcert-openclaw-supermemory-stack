@@ -88,3 +88,23 @@ def test_openclaw_recall_schema_rejects_negative_and_zero_limits():
     assert limit["type"] == "integer"
     assert limit["minimum"] == 1
     assert limit["maximum"] == 50
+
+
+@pytest.mark.parametrize("invalid_limit", [-1, 0, True, 1.5])
+def test_sqlite_list_items_refuses_unbounded_limit(synthetic_memories, invalid_limit):
+    """Listing private memories must not accept SQLite's unlimited LIMIT -1."""
+    with pytest.raises(ValueError, match="limit must be a positive integer"):
+        synthetic_memories.list_items(limit=invalid_limit)
+
+
+@pytest.mark.parametrize("invalid_offset", [-1, True, 1.5])
+def test_sqlite_list_items_refuses_invalid_offset(synthetic_memories, invalid_offset):
+    with pytest.raises(ValueError, match="offset must be a nonnegative integer"):
+        synthetic_memories.list_items(limit=1, offset=invalid_offset)
+
+
+def test_sqlite_list_items_valid_page_remains_bounded(synthetic_memories):
+    first = synthetic_memories.list_items(limit=1, offset=0)
+    second = synthetic_memories.list_items(limit=1, offset=1)
+    assert len(first) == len(second) == 1
+    assert first[0].id != second[0].id
