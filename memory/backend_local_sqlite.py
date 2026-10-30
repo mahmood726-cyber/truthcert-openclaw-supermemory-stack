@@ -9,7 +9,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from contextlib import contextmanager
 
 from .schema import (
@@ -172,7 +172,7 @@ class LocalSQLiteBackend:
 
         return item.id
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -190,9 +190,9 @@ class LocalSQLiteBackend:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         include_deleted: bool = False,
     ) -> RecallResult:
         """
@@ -281,7 +281,7 @@ class LocalSQLiteBackend:
         self,
         limit: int = 100,
         offset: int = 0,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination."""
