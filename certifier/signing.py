@@ -8,7 +8,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -28,7 +28,7 @@ from .errors import ConfigurationError, TruthCertError, ErrorCode
 class SigningError(TruthCertError):
     """Error during signing operations."""
 
-    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(
             message=message,
             code=ErrorCode.SIGNING_ERROR,
@@ -40,7 +40,7 @@ class SigningError(TruthCertError):
 class VerificationError(TruthCertError):
     """Error during verification operations."""
 
-    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         super().__init__(
             message=message,
             code=ErrorCode.VERIFICATION_ERROR,
@@ -137,7 +137,7 @@ def load_private_key() -> Ed25519PrivateKey:
         )
 
 
-def load_public_key(key_b64: Optional[str] = None) -> Ed25519PublicKey:
+def load_public_key(key_b64: str | None = None) -> Ed25519PublicKey:
     """
     Load public key from string or environment variable.
 
@@ -266,7 +266,7 @@ def create_receipt(
     claim_count: int,
     signature_b64: str,
     public_key_b64: str,
-    verification_url: Optional[str] = None,
+    verification_url: str | None = None,
 ) -> dict[str, Any]:
     """Create a certification receipt."""
     return {

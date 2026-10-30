@@ -9,7 +9,7 @@ import tarfile
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from .constants import (
     DEFAULT_BUNDLE_DIR,
@@ -49,7 +49,7 @@ def compute_bundle_id(
     claims: list[NumericClaim],
     scope_lock: ScopeLock,
     policy_id: str,
-    claims_sha256: Optional[str] = None,
+    claims_sha256: str | None = None,
 ) -> str:
     """Derive a deterministic v2 full-payload ID or historical v1 claim ID."""
     # No new bundle may reuse a legacy ID after changing an unbound CI bound,
@@ -156,7 +156,7 @@ def write_manifest(
 def write_attestation(
     bundle_path: Path,
     manifest_data: dict[str, Any],
-    verification_url: Optional[str] = None,
+    verification_url: str | None = None,
 ) -> dict[str, Any]:
     """
     Sign the manifest and write attestation files.
@@ -201,10 +201,10 @@ def create_bundle(
     policy_id: str,
     validation_summary: ValidationSummary,
     validators: list[str],
-    model_metadata: Optional[dict[str, Any]] = None,
-    tool_metadata: Optional[dict[str, Any]] = None,
+    model_metadata: dict[str, Any] | None = None,
+    tool_metadata: dict[str, Any] | None = None,
     sign: bool = True,
-    verification_url: Optional[str] = None,
+    verification_url: str | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """
     Create a complete certification bundle.

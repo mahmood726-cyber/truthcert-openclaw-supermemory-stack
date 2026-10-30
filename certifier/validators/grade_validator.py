@@ -19,7 +19,7 @@ This is a COMPLETE implementation with full validation logic.
 """
 
 import math
-from typing import Any, Optional
+from typing import Any
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -124,16 +124,16 @@ class GRADEAssessment:
     study_design: str
 
     # Downgrading domains
-    risk_of_bias: Optional[DomainAssessment] = None
-    inconsistency: Optional[DomainAssessment] = None
-    indirectness: Optional[DomainAssessment] = None
-    imprecision: Optional[DomainAssessment] = None
-    publication_bias: Optional[DomainAssessment] = None
+    risk_of_bias: DomainAssessment | None = None
+    inconsistency: DomainAssessment | None = None
+    indirectness: DomainAssessment | None = None
+    imprecision: DomainAssessment | None = None
+    publication_bias: DomainAssessment | None = None
 
     # Upgrading factors
-    large_effect: Optional[DomainAssessment] = None
-    dose_response: Optional[DomainAssessment] = None
-    plausible_confounding: Optional[DomainAssessment] = None
+    large_effect: DomainAssessment | None = None
+    dose_response: DomainAssessment | None = None
+    plausible_confounding: DomainAssessment | None = None
 
     # Final calculation
     total_downgrade: int = 0
@@ -244,7 +244,7 @@ class GRADECertaintyValidator(Validator):
     description = "Validates GRADE Certainty of Evidence assessments"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None):
         super().__init__(config)
         self.thresholds = GRADEThresholds()
 
@@ -1020,7 +1020,7 @@ class GRADECertaintyValidator(Validator):
     def _validate_risk_of_bias(
         self,
         claim: NumericClaim,
-        domain: Optional[DomainAssessment]
+        domain: DomainAssessment | None
     ) -> tuple[list[dict], list[dict]]:
         """Validate risk of bias domain assessment."""
         errors = []
@@ -1052,7 +1052,7 @@ class GRADECertaintyValidator(Validator):
     def _validate_inconsistency(
         self,
         claim: NumericClaim,
-        domain: Optional[DomainAssessment]
+        domain: DomainAssessment | None
     ) -> tuple[list[dict], list[dict]]:
         """Validate inconsistency domain assessment."""
         errors = []
@@ -1091,7 +1091,7 @@ class GRADECertaintyValidator(Validator):
     def _validate_indirectness(
         self,
         claim: NumericClaim,
-        domain: Optional[DomainAssessment]
+        domain: DomainAssessment | None
     ) -> tuple[list[dict], list[dict]]:
         """Validate indirectness domain assessment."""
         errors = []
@@ -1114,7 +1114,7 @@ class GRADECertaintyValidator(Validator):
     def _validate_imprecision(
         self,
         claim: NumericClaim,
-        domain: Optional[DomainAssessment]
+        domain: DomainAssessment | None
     ) -> tuple[list[dict], list[dict]]:
         """Validate imprecision domain assessment."""
         errors = []
@@ -1149,7 +1149,7 @@ class GRADECertaintyValidator(Validator):
     def _validate_publication_bias(
         self,
         claim: NumericClaim,
-        domain: Optional[DomainAssessment]
+        domain: DomainAssessment | None
     ) -> tuple[list[dict], list[dict]]:
         """Validate publication bias domain assessment."""
         errors = []
@@ -1220,7 +1220,7 @@ class GRADECertaintyValidator(Validator):
             values.append(claim.grade_certainty)
         return values
 
-    def _get_reported_certainty(self, claim: NumericClaim) -> Optional[GRADECertainty]:
+    def _get_reported_certainty(self, claim: NumericClaim) -> GRADECertainty | None:
         """Parse all declared levels, refusing invalid or conflicting evidence."""
         declared = self._declared_grade_values(claim)
         if not declared:
@@ -1256,7 +1256,7 @@ class GRADECertaintyValidator(Validator):
 
         return next(iter(parsed)) if len(parsed) == 1 else None
 
-    def _get_stat(self, claim: NumericClaim, keys: list[str]) -> Optional[float]:
+    def _get_stat(self, claim: NumericClaim, keys: list[str]) -> float | None:
         """Get a numeric statistic from claim metadata."""
         for key in keys:
             # Try exact key
@@ -1278,7 +1278,7 @@ class GRADECertaintyValidator(Validator):
 
         return None
 
-    def _get_stat_dict(self, claim: NumericClaim, keys: list[str]) -> Optional[dict]:
+    def _get_stat_dict(self, claim: NumericClaim, keys: list[str]) -> dict | None:
         """Get a dictionary statistic from claim metadata."""
         for key in keys:
             if key in claim.metadata:
@@ -1293,7 +1293,7 @@ class GRADECertaintyValidator(Validator):
 
         return None
 
-    def _get_stat_list(self, claim: NumericClaim, keys: list[str]) -> Optional[list]:
+    def _get_stat_list(self, claim: NumericClaim, keys: list[str]) -> list | None:
         """Get a list statistic from claim metadata."""
         for key in keys:
             if key in claim.metadata:
@@ -1310,7 +1310,7 @@ class GRADECertaintyValidator(Validator):
 
     def _serialize_assessment(self, assessment: GRADEAssessment) -> dict:
         """Serialize a GRADE assessment to dictionary."""
-        def serialize_domain(domain: Optional[DomainAssessment]) -> Optional[dict]:
+        def serialize_domain(domain: DomainAssessment | None) -> dict | None:
             if domain is None:
                 return None
             return {
@@ -1449,7 +1449,7 @@ def summarize_grade_table(assessments: list[GRADEAssessment]) -> str:
     ]
 
     for a in assessments:
-        def level_symbol(domain: Optional[DomainAssessment]) -> str:
+        def level_symbol(domain: DomainAssessment | None) -> str:
             if domain is None:
                 return "-"
             if domain.downgrade_levels == 0:

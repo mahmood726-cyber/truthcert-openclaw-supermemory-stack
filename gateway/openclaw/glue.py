@@ -6,7 +6,7 @@ This module provides the integration between OpenClaw runtime and TruthCert cert
 
 import os
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 from dataclasses import dataclass
 
 import httpx
@@ -21,7 +21,7 @@ class CertificationResult:
     outcome: str
     errors: list[str]
     warnings: list[str]
-    receipt: Optional[dict[str, Any]] = None
+    receipt: dict[str, Any] | None = None
 
 
 class TruthCertGlue:
@@ -36,9 +36,9 @@ class TruthCertGlue:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
+        base_url: str | None = None,
         timeout: int = 30,
-        memory_commands: Optional[MemoryCommands] = None,
+        memory_commands: MemoryCommands | None = None,
     ):
         self.base_url = base_url or os.environ.get("TRUTHCERT_URL", "http://localhost:8000")
         self.timeout = int(os.environ.get("TRUTHCERT_TIMEOUT", timeout))
@@ -49,7 +49,7 @@ class TruthCertGlue:
         self,
         claims: list[dict[str, Any]],
         policy_id: str = "silver",
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
         store_result: bool = True,
     ) -> CertificationResult:
         """
@@ -136,8 +136,8 @@ class TruthCertGlue:
     def submit_job(
         self,
         policy_id: str = "silver",
-        input_path: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        input_path: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Submit a certification job.
@@ -200,7 +200,7 @@ class TruthCertGlue:
     def remember(
         self,
         text: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         memory_type: str = "note",
     ) -> dict[str, Any]:
         """Store to memory."""
@@ -244,7 +244,7 @@ class TruthCertGlue:
 def run_daily_certification(
     input_dir: str,
     policy_id: str = "silver",
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Run daily certification job.

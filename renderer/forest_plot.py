@@ -8,7 +8,7 @@ Only renders data from PASS bundles with valid signatures.
 import html
 import math
 from dataclasses import dataclass, field
-from typing import Any, Optional, List
+from typing import Any
 from pathlib import Path
 
 
@@ -21,9 +21,9 @@ class StudyData:
     lower_ci: float
     upper_ci: float
     weight: float = 0.0
-    n_total: Optional[int] = None
-    n_events: Optional[int] = None
-    subgroup: Optional[str] = None
+    n_total: int | None = None
+    n_events: int | None = None
+    subgroup: str | None = None
 
 
 @dataclass
@@ -33,9 +33,9 @@ class PooledEstimate:
     lower_ci: float
     upper_ci: float
     model: str = "random"  # "fixed" or "random"
-    i_squared: Optional[float] = None
-    tau_squared: Optional[float] = None
-    p_heterogeneity: Optional[float] = None
+    i_squared: float | None = None
+    tau_squared: float | None = None
+    p_heterogeneity: float | None = None
 
 
 @dataclass
@@ -64,8 +64,8 @@ class ForestPlotConfig:
     # Effect size scale
     null_value: float = 1.0  # 1.0 for ratios, 0.0 for differences
     log_scale: bool = True   # Use log scale for ratio measures
-    x_min: Optional[float] = None
-    x_max: Optional[float] = None
+    x_min: float | None = None
+    x_max: float | None = None
 
     # Labels
     effect_label: str = "Effect Size"
@@ -80,13 +80,13 @@ class ForestPlotGenerator:
     CRITICAL: Only generates plots from certified data.
     """
 
-    def __init__(self, config: Optional[ForestPlotConfig] = None):
+    def __init__(self, config: ForestPlotConfig | None = None):
         self.config = config or ForestPlotConfig()
 
     def generate(
         self,
-        studies: List[StudyData],
-        pooled: Optional[PooledEstimate] = None,
+        studies: list[StudyData],
+        pooled: PooledEstimate | None = None,
         title: str = "Forest Plot",
     ) -> str:
         """
@@ -400,8 +400,8 @@ class ForestPlotGenerator:
 
     def _calculate_x_range(
         self,
-        studies: List[StudyData],
-        pooled: Optional[PooledEstimate],
+        studies: list[StudyData],
+        pooled: PooledEstimate | None,
     ) -> tuple[float, float]:
         """Calculate x-axis range from data."""
         c = self.config
@@ -465,9 +465,9 @@ class ForestPlotGenerator:
 
 
 def generate_forest_plot_from_claims(
-    claims: List[dict],
+    claims: list[dict],
     title: str = "Forest Plot",
-    config: Optional[ForestPlotConfig] = None,
+    config: ForestPlotConfig | None = None,
 ) -> str:
     """
     Generate forest plot from claim data.

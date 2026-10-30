@@ -17,7 +17,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from .models import CertificationProfile, NumericClaim, ScopeLock
 
@@ -44,9 +44,9 @@ class WitnessResult:
     """Result from a single witness verification."""
     witness_id: str
     verdict: WitnessVerdict
-    extracted_value: Optional[float] = None
-    confidence: Optional[float] = None
-    reasoning: Optional[str] = None
+    extracted_value: float | None = None
+    confidence: float | None = None
+    reasoning: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: dict = field(default_factory=dict)
 
@@ -67,7 +67,7 @@ class DisputeRecord:
     claim_id: str
     witnesses: list[WitnessResult]
     resolution: DisputeResolution
-    final_value: Optional[float] = None
+    final_value: float | None = None
     agreement_score: float = 0.0
     majority_threshold: float = 0.5
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -103,7 +103,7 @@ class MultiWitnessVerifier:
     def __init__(
         self,
         profile: CertificationProfile = CertificationProfile.SILVER,
-        custom_threshold: Optional[float] = None,
+        custom_threshold: float | None = None,
     ):
         self.profile = profile
         self.requirements = self.WITNESS_REQUIREMENTS[profile]

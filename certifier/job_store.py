@@ -10,7 +10,6 @@ import queue
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from .constants import DEFAULT_DB_PATH, ENV_DB_PATH
 from .models import Job, JobStatus, CertificationProfile
@@ -126,7 +125,7 @@ class JobStore:
     - Thread-safe operations
     """
 
-    def __init__(self, db_path: Optional[str] = None, pool_size: int = 5):
+    def __init__(self, db_path: str | None = None, pool_size: int = 5):
         self.db_path = Path(db_path or os.environ.get(ENV_DB_PATH, DEFAULT_DB_PATH))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), pool_size=pool_size)
@@ -243,7 +242,7 @@ class JobStore:
 
         return job
 
-    def get(self, job_id: str) -> Optional[Job]:
+    def get(self, job_id: str) -> Job | None:
         """
         Get a job by ID.
 
@@ -321,8 +320,8 @@ class JobStore:
 
     def list_jobs(
         self,
-        status: Optional[JobStatus] = None,
-        policy_id: Optional[str] = None,
+        status: JobStatus | None = None,
+        policy_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Job]:
@@ -360,7 +359,7 @@ class JobStore:
 
             return [self._row_to_job(row) for row in rows]
 
-    def count(self, status: Optional[JobStatus] = None) -> int:
+    def count(self, status: JobStatus | None = None) -> int:
         """
         Count jobs.
 
@@ -433,7 +432,7 @@ class JobStore:
 
 
 # Global job store instance
-_job_store: Optional[JobStore] = None
+_job_store: JobStore | None = None
 
 
 def get_job_store() -> JobStore:
@@ -452,7 +451,7 @@ def get_job_store() -> JobStore:
     return _job_store
 
 
-def init_job_store(db_path: Optional[str] = None) -> JobStore:
+def init_job_store(db_path: str | None = None) -> JobStore:
     """
     Initialize and return the global job store (thread-safe).
 
