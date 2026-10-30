@@ -210,17 +210,18 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
 
-            # Check for duplicate content
+            # The hash is content-addressed, not a complete provenance identity.
+            # Compare every active candidate before reusing an ID, including
+            # privacy and retention fields. Keep historical hashes unchanged.
             await cursor.execute(
-                "SELECT id FROM memory_items WHERE content_hash = ? AND deleted = 0",
+                """SELECT * FROM memory_items
+                   WHERE content_hash = ? AND deleted = 0 ORDER BY id""",
                 (content_hash,),
             )
-            existing = await cursor.fetchone()
-            if existing:
-                existing_id = existing["id"]
-                if not isinstance(existing_id, str):
-                    raise TypeError("Invalid memory identifier in database")
-                return existing_id
+            for existing in await cursor.fetchall():
+                stored = self._row_to_item(existing)
+                if stored.same_dedup_identity(item):
+                    return stored.id
 
             # Insert new item
             await cursor.execute(
