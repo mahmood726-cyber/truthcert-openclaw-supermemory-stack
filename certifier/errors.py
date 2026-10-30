@@ -3,7 +3,8 @@ Standardized error handling for TruthCert certifier.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
+
 from fastapi import HTTPException
 
 
@@ -43,8 +44,8 @@ class TruthCertError(Exception):
         message: str,
         code: ErrorCode = ErrorCode.INTERNAL_ERROR,
         status_code: int = 500,
-        details: Optional[dict[str, Any]] = None,
-        hint: Optional[str] = None,
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
     ):
         self.message = message
         self.code = code
@@ -79,8 +80,8 @@ class ValidationError(TruthCertError):
         self,
         message: str,
         code: ErrorCode = ErrorCode.VALIDATION_FAILED,
-        details: Optional[dict[str, Any]] = None,
-        hint: Optional[str] = None,
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
     ):
         super().__init__(
             message=message,
@@ -98,7 +99,7 @@ class NotFoundError(TruthCertError):
         self,
         message: str,
         code: ErrorCode = ErrorCode.BUNDLE_NOT_FOUND,
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(
             message=message,
@@ -115,8 +116,8 @@ class ConfigurationError(TruthCertError):
         self,
         message: str,
         code: ErrorCode = ErrorCode.SIGNING_KEY_NOT_CONFIGURED,
-        details: Optional[dict[str, Any]] = None,
-        hint: Optional[str] = None,
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
     ):
         super().__init__(
             message=message,
@@ -133,7 +134,7 @@ class RateLimitError(TruthCertError):
     def __init__(
         self,
         message: str = "Rate limit exceeded. Please try again later.",
-        details: Optional[dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(
             message=message,
@@ -211,6 +212,6 @@ def handle_exception(exc: Exception) -> HTTPException:
         status_code=500,
         detail={
             "error": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
+            "message": "Internal server error",
         },
     )
