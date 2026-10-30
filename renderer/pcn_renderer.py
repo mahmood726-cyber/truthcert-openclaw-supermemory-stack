@@ -11,29 +11,25 @@ Enhanced with QWED (Quantitative Workflow with External Determinism):
 """
 
 import html
-import json
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
-from dataclasses import dataclass
+from typing import Any
 
 from certifier.bundle import load_bundle
-from certifier.signing import verify_signature
 from certifier.constants import BundleOutcome
-from certifier.qwed import QWEDVerifier, get_verification_summary, VerificationStatus
-from certifier.models import NumericClaim, ClaimType, EvidenceLocator, EvidenceType
+from certifier.models import NumericClaim
+from certifier.qwed import QWEDVerifier, get_verification_summary
+from certifier.signing import verify_signature
 
 
 @dataclass
 class RenderResult:
     """Result of rendering operation."""
+
     success: bool
     content: str
-    error: Optional[str] = None
-    warnings: list[str] = None
-
-    def __post_init__(self):
-        if self.warnings is None:
-            self.warnings = []
+    error: str | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 class PCNRenderer:
@@ -48,21 +44,21 @@ class PCNRenderer:
     """
 
     # HTML template for certified numbers
-    CERTIFIED_NUMBER_TEMPLATE = '''
+    CERTIFIED_NUMBER_TEMPLATE = """
     <span class="pcn-certified" data-bundle-id="{bundle_id}" data-claim-id="{claim_id}">
         <span class="pcn-value">{value}</span>
         <span class="pcn-unit">{unit}</span>
         <span class="pcn-badge" title="Certified: {profile}">✓</span>
     </span>
-    '''
+    """
 
     # Template for confidence intervals
-    CI_TEMPLATE = '''
+    CI_TEMPLATE = """
     <span class="pcn-ci">[{lower}, {upper}]</span>
-    '''
+    """
 
     # CSS styles
-    STYLES = '''
+    STYLES = """
     <style>
     .pcn-certified {
         display: inline-flex;
@@ -98,9 +94,9 @@ class PCNRenderer:
         color: #e53e3e;
     }
     </style>
-    '''
+    """
 
-    def __init__(self, verify_signatures: bool = True, verify_qwed: bool = True):
+    def __init__(self, verify_signatures: bool = True, verify_qwed: bool = True) -> None:
         self.verify_signatures = verify_signatures
         self.verify_qwed = verify_qwed
         self.qwed_verifier = QWEDVerifier() if verify_qwed else None
@@ -153,7 +149,7 @@ class PCNRenderer:
                 signature_b64 = sig_file.read_text().strip()
                 public_key_b64 = pubkey_file.read_text().strip()
                 verify_signature(manifest, signature_b64, public_key_b64)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- fail-closed verification boundary
                 return RenderResult(
                     success=False,
                     content="",
@@ -260,10 +256,10 @@ class PCNRenderer:
             success=False,
             content="",
             error=f"REFUSED: Cannot render uncertified number: {value}. "
-                  f"Numbers must be certified through TruthCert before rendering.",
+            f"Numbers must be certified through TruthCert before rendering.",
         )
 
-    def verify_claim_qwed(self, claim_dict: dict) -> tuple[bool, list[dict]]:
+    def verify_claim_qwed(self, claim_dict: dict[str, Any]) -> tuple[bool, list[dict[str, Any]]]:
         """
         Run QWED verification on a claim.
 
@@ -271,45 +267,30 @@ class PCNRenderer:
             Tuple of (passed, verification_details)
         """
         if not self.qwed_verifier:
-            return True, []
+            return False, [{"error": "QWED verifier is unavailable"}]
 
         try:
-            # Reconstruct claim for verification
-            claim = NumericClaim(
-                claim_id=claim_dict.get("claim_id", "unknown"),
-                claim_type=ClaimType(claim_dict.get("claim_type", "effect_size")),
-                value=claim_dict.get("value", 0),
-                unit=claim_dict.get("unit"),
-                lower_bound=claim_dict.get("lower_bound"),
-                upper_bound=claim_dict.get("upper_bound"),
-                standard_error=claim_dict.get("standard_error"),
-                variance=claim_dict.get("variance"),
-                confidence_level=claim_dict.get("confidence_level", 0.95),
-                evidence=[
-                    EvidenceLocator(
-                        source_type=EvidenceType.OA_DOCUMENT,
-                        uri="doi:placeholder",
-                        content_hash="sha256:" + "0" * 64,
-                    )
-                ],
-                metadata=claim_dict.get("metadata", {}),
-            )
+            # Verify the complete signed claim, including its original evidence.
+            # Missing fields must be rejected rather than invented for rendering.
+            claim = NumericClaim.model_validate(claim_dict)
 
             results = self.qwed_verifier.verify_claim(claim)
             summary = get_verification_summary(results)
 
             details = []
             for r in results:
-                details.append({
-                    "check": r.check_type,
-                    "status": r.status.value,
-                    "message": r.message,
-                })
+                details.append(
+                    {
+                        "check": r.check_type,
+                        "status": r.status.value,
+                        "message": r.message,
+                    }
+                )
 
             return summary["all_passed"], details
 
-        except Exception as e:
-            return True, [{"error": str(e)}]
+        except Exception:  # noqa: BLE001 -- any verifier failure must refuse proof output
+            return False, [{"error": "QWED verification failed"}]
 
     def render_with_proof(
         self,
@@ -335,11 +316,19 @@ class PCNRenderer:
         verified_claims = []
         for claim in claims:
             qwed_passed, qwed_details = self.verify_claim_qwed(claim)
-            verified_claims.append({
-                **claim,
-                "_qwed_verified": qwed_passed,
-                "_qwed_details": qwed_details,
-            })
+            if not qwed_passed:
+                return RenderResult(
+                    success=False,
+                    content="",
+                    error="REFUSED: Claim did not pass QWED verification",
+                )
+            verified_claims.append(
+                {
+                    **claim,
+                    "_qwed_verified": qwed_passed,
+                    "_qwed_details": qwed_details,
+                }
+            )
 
         # Re-render with verification badges
         manifest = bundle_data["manifest"]
@@ -360,7 +349,7 @@ class PCNRenderer:
 
     def _render_qwed_styles(self) -> str:
         """Additional styles for QWED verification badges."""
-        return '''
+        return """
         <style>
         .pcn-qwed-verified {
             position: relative;
@@ -393,11 +382,11 @@ class PCNRenderer:
             display: block;
         }
         </style>
-        '''
+        """
 
     def _render_claim_with_proof(
         self,
-        claim: dict,
+        claim: dict[str, Any],
         bundle_id: str,
         profile: str,
     ) -> str:
@@ -429,7 +418,7 @@ class PCNRenderer:
 
 def render_bundle_report(
     bundle_path: Path,
-    output_path: Optional[Path] = None,
+    output_path: Path | None = None,
 ) -> str:
     """
     Render a complete HTML report for a bundle.
@@ -445,28 +434,28 @@ def render_bundle_report(
     result = renderer.render_bundle(bundle_path)
 
     if not result.success:
-        html_content = f'''
+        html_content = f"""
         <!DOCTYPE html>
         <html>
         <head><title>Certification Report - ERROR</title></head>
         <body>
             <h1>Certification Report</h1>
             <div class="error" style="color: red; padding: 1em; background: #fff5f5;">
-                <strong>Error:</strong> {html.escape(result.error or 'Unknown error')}
+                <strong>Error:</strong> {html.escape(result.error or "Unknown error")}
             </div>
         </body>
         </html>
-        '''
+        """
     else:
         bundle_data = load_bundle(bundle_path)
         manifest = bundle_data["manifest"]
 
-        html_content = f'''
+        html_content = f"""
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Certification Report - {html.escape(manifest.get('bundle_id', '')[:16])}</title>
-            {result.content.split('</style>')[0]}</style>
+            <title>Certification Report - {html.escape(manifest.get("bundle_id", "")[:16])}</title>
+            {result.content.split("</style>")[0]}</style>
             <style>
                 body {{ font-family: system-ui, sans-serif; max-width: 800px; margin: 2em auto; padding: 1em; }}
                 .header {{ background: #f7fafc; padding: 1em; border-radius: 8px; margin-bottom: 1em; }}
@@ -477,10 +466,10 @@ def render_bundle_report(
         <body>
             <div class="header">
                 <h1>Certification Report</h1>
-                <p><strong>Bundle ID:</strong> {html.escape(manifest.get('bundle_id', 'N/A'))}</p>
-                <p><strong>Outcome:</strong> <span style="color: {'green' if manifest.get('outcome') == 'PASS' else 'red'}">{html.escape(manifest.get('outcome', 'N/A'))}</span></p>
-                <p><strong>Profile:</strong> {html.escape(manifest.get('profile', 'N/A'))}</p>
-                <p><strong>Claims:</strong> {manifest.get('claim_count', 0)}</p>
+                <p><strong>Bundle ID:</strong> {html.escape(manifest.get("bundle_id", "N/A"))}</p>
+                <p><strong>Outcome:</strong> <span style="color: {"green" if manifest.get("outcome") == "PASS" else "red"}">{html.escape(manifest.get("outcome", "N/A"))}</span></p>
+                <p><strong>Profile:</strong> {html.escape(manifest.get("profile", "N/A"))}</p>
+                <p><strong>Claims:</strong> {manifest.get("claim_count", 0)}</p>
             </div>
             <h2>Certified Claims</h2>
             <div class="claims">
@@ -488,7 +477,7 @@ def render_bundle_report(
             </div>
         </body>
         </html>
-        '''
+        """
 
     if output_path:
         output_path.write_text(html_content)

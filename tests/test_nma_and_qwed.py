@@ -3,27 +3,24 @@ Tests for NMA validator and QWED verification.
 """
 
 import pytest
-from datetime import datetime, timezone
 
+from certifier.constants import Severity
 from certifier.models import (
-    NumericClaim,
-    ScopeLock,
     CertificationProfile,
     ClaimType,
     EvidenceLocator,
     EvidenceType,
+    NumericClaim,
+    ScopeLock,
 )
-from certifier.validators.nma_validator import NMAValidator, PRISMANMAValidator
-from certifier.validators.qwed_validator import QWEDValidator, MathConsistencyValidator
 from certifier.qwed import (
     QWEDVerifier,
-    verify_all_claims,
-    get_verification_summary,
     VerificationStatus,
-    _t_ppf,
     _get_critical_value,
+    _t_ppf,
 )
-from certifier.constants import Severity
+from certifier.validators.nma_validator import NMAValidator, PRISMANMAValidator
+from certifier.validators.qwed_validator import MathConsistencyValidator, QWEDValidator
 
 
 @pytest.fixture
@@ -54,7 +51,7 @@ def nma_scope_lock():
                 "nma_results_presented": True,
                 "certainty_assessment": True,
             }
-        }
+        },
     )
 
 
@@ -235,7 +232,7 @@ class TestPRISMANMAValidator:
                     "network_geometry_described": True,
                     # Missing other required items
                 }
-            }
+            },
         )
 
         claim = NumericClaim(
@@ -292,7 +289,9 @@ class TestQWEDValidator:
         result = validator.run([claim], sample_scope_lock, {})
 
         # Should have warnings or errors
-        assert len(result.details.get("warnings", [])) > 0 or len(result.details.get("errors", [])) > 0
+        assert (
+            len(result.details.get("warnings", [])) > 0 or len(result.details.get("errors", [])) > 0
+        )
 
     def test_ratio_constraints_checked(self, sample_scope_lock, basic_evidence):
         """Test that ratio measure constraints are verified."""
@@ -317,7 +316,9 @@ class TestQWEDValidator:
         )
 
         result = validator.run([invalid_rr], sample_scope_lock, {})
-        assert len(result.details.get("warnings", [])) > 0 or len(result.details.get("errors", [])) > 0
+        assert (
+            len(result.details.get("warnings", [])) > 0 or len(result.details.get("errors", [])) > 0
+        )
 
 
 class TestMathConsistencyValidator:
@@ -512,6 +513,7 @@ class TestLogScaleCISymmetry:
         # 95% CI on log scale: 0.693 +/- 1.96 * 0.2 = [0.301, 1.085]
         # Back-transform: [exp(0.301), exp(1.085)] = [1.35, 2.96]
         import math
+
         log_value = math.log(2.0)
         se_log = 0.2
         z = 1.96
@@ -566,12 +568,12 @@ class TestRandomEffectsPooling:
 
         # Calculate expected tau-squared and pooled effect
         # (Using DerSimonian-Laird method)
-        fe_weights = [1/v for v in variances]
+        fe_weights = [1 / v for v in variances]
         sum_fe_weights = sum(fe_weights)
         pooled_fe = sum(w * y for w, y in zip(fe_weights, effects)) / sum_fe_weights
 
         Q = sum(w * (y - pooled_fe) ** 2 for w, y in zip(fe_weights, effects))
-        C = sum_fe_weights - sum(w ** 2 for w in fe_weights) / sum_fe_weights
+        C = sum_fe_weights - sum(w**2 for w in fe_weights) / sum_fe_weights
         tau_sq = max(0, (Q - 2) / C)  # k-1 = 2
 
         re_weights = [1 / (v + tau_sq) for v in variances]
@@ -629,7 +631,6 @@ class TestSmallSampleTDistribution:
 
         # Small sample (n=10), df=9
         # t(0.975, 9) ≈ 2.262
-        import math
         value = 1.0
         se = 0.1
         t_crit = _get_critical_value(0.95, df=9, use_t=True)
@@ -687,6 +688,7 @@ class TestPredictionInterval:
         verifier = QWEDVerifier()
 
         import math
+
         pooled = 0.5
         tau_squared = 0.04
         se_pooled = 0.1
@@ -694,7 +696,7 @@ class TestPredictionInterval:
         df = n_studies - 2  # 3
 
         t_crit = _get_critical_value(0.95, df=df, use_t=True)
-        pi_se = math.sqrt(tau_squared + se_pooled ** 2)
+        pi_se = math.sqrt(tau_squared + se_pooled**2)
         pi_lower = pooled - t_crit * pi_se
         pi_upper = pooled + t_crit * pi_se
 
@@ -725,7 +727,6 @@ class TestPredictionInterval:
         """Test that PI narrower than CI fails."""
         verifier = QWEDVerifier()
 
-        import math
         pooled = 0.5
         tau_squared = 0.04
         se_pooled = 0.1
@@ -734,7 +735,7 @@ class TestPredictionInterval:
         # Create PI narrower than CI (incorrect)
         ci_lower = pooled - 1.96 * se_pooled
         ci_upper = pooled + 1.96 * se_pooled
-        ci_width = ci_upper - ci_lower
+        _ci_width = ci_upper - ci_lower
 
         # PI should be wider, but we make it narrower
         pi_lower = pooled - 0.1  # Too narrow

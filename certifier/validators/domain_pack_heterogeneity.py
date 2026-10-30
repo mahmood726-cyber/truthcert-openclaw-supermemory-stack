@@ -11,17 +11,18 @@ This is a COMPLETE implementation with full validation logic.
 """
 
 import math
-from typing import Any, Optional
 from dataclasses import dataclass
+from typing import Any, ClassVar
 
 from ..constants import Severity
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ClaimType, ValidatorConfig
+from ..models import ClaimType, NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
 
 @dataclass
 class HeterogeneityBounds:
     """Plausibility bounds for heterogeneity statistics."""
+
     i_squared_min: float = 0.0
     i_squared_max: float = 100.0
     tau_squared_min: float = 0.0
@@ -51,7 +52,7 @@ class HeterogeneityValidator(Validator):
     default_severity = Severity.BLOCK
 
     # Heterogeneity claim types
-    HET_CLAIM_TYPES = {
+    HET_CLAIM_TYPES: ClassVar[set[ClaimType]] = {
         ClaimType.HETEROGENEITY,
     }
 
@@ -60,14 +61,13 @@ class HeterogeneityValidator(Validator):
     I2_MODERATE = 50.0
     I2_HIGH = 75.0
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         self.bounds = HeterogeneityBounds()
         # Get custom params from config
         params = config.params if config else {}
-        if params:
-            if "tau_squared_max" in params:
-                self.bounds.tau_squared_max = params["tau_squared_max"]
+        if params and "tau_squared_max" in params:
+            self.bounds.tau_squared_max = params["tau_squared_max"]
 
     def validate(
         self,
@@ -76,16 +76,17 @@ class HeterogeneityValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate heterogeneity claims."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
 
         for claim in claims:
             # Check if this is a heterogeneity claim
-            if claim.claim_type not in self.HET_CLAIM_TYPES:
-                # Also check metadata for heterogeneity statistics
-                if not self._is_heterogeneity_claim(claim):
-                    continue
+            # Also check metadata for heterogeneity statistics
+            if (claim.claim_type not in self.HET_CLAIM_TYPES) and (
+                not self._is_heterogeneity_claim(claim)
+            ):
+                continue
 
             validated_count += 1
             claim_errors, claim_warnings = self._validate_claim(claim)
@@ -104,7 +105,9 @@ class HeterogeneityValidator(Validator):
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"Validated {validated_count} heterogeneity claims"
                 if passed
@@ -124,14 +127,25 @@ class HeterogeneityValidator(Validator):
 
     def _is_heterogeneity_claim(self, claim: NumericClaim) -> bool:
         """Check if claim contains heterogeneity statistics in metadata."""
-        het_keys = {"i_squared", "i2", "tau_squared", "tau2", "q_statistic", "cochran_q", "h_squared", "h2"}
-        claim_keys = set(k.lower() for k in claim.metadata.keys())
+        het_keys = {
+            "i_squared",
+            "i2",
+            "tau_squared",
+            "tau2",
+            "q_statistic",
+            "cochran_q",
+            "h_squared",
+            "h2",
+        }
+        claim_keys = {k.lower() for k in claim.metadata}
         return bool(het_keys & claim_keys)
 
-    def _validate_claim(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_claim(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate a single heterogeneity claim."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Get heterogeneity values from metadata or claim value
         i_squared = self._get_stat(claim, ["i_squared", "i2", "isquared"])
@@ -148,111 +162,128 @@ class HeterogeneityValidator(Validator):
         # Validate I²
         if i_squared is not None:
             if i_squared < self.bounds.i_squared_min:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "I²",
-                    "value": i_squared,
-                    "issue": f"I² cannot be negative (got {i_squared}%)",
-                    "bound": f">= {self.bounds.i_squared_min}%",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "I²",
+                        "value": i_squared,
+                        "issue": f"I² cannot be negative (got {i_squared}%)",
+                        "bound": f">= {self.bounds.i_squared_min}%",
+                    }
+                )
             elif i_squared > self.bounds.i_squared_max:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "I²",
-                    "value": i_squared,
-                    "issue": f"I² cannot exceed 100% (got {i_squared}%)",
-                    "bound": f"<= {self.bounds.i_squared_max}%",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "I²",
+                        "value": i_squared,
+                        "issue": f"I² cannot exceed 100% (got {i_squared}%)",
+                        "bound": f"<= {self.bounds.i_squared_max}%",
+                    }
+                )
             elif i_squared >= self.I2_HIGH:
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "I²",
-                    "value": i_squared,
-                    "issue": f"High heterogeneity detected (I² = {i_squared}%)",
-                    "interpretation": "Substantial heterogeneity; consider subgroup analysis",
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "I²",
+                        "value": i_squared,
+                        "issue": f"High heterogeneity detected (I² = {i_squared}%)",
+                        "interpretation": "Substantial heterogeneity; consider subgroup analysis",
+                    }
+                )
 
         # Validate τ²
         if tau_squared is not None:
             if tau_squared < self.bounds.tau_squared_min:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "τ²",
-                    "value": tau_squared,
-                    "issue": f"τ² cannot be negative (got {tau_squared})",
-                    "bound": f">= {self.bounds.tau_squared_min}",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "τ²",
+                        "value": tau_squared,
+                        "issue": f"τ² cannot be negative (got {tau_squared})",
+                        "bound": f">= {self.bounds.tau_squared_min}",
+                    }
+                )
             elif tau_squared > self.bounds.tau_squared_max:
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "τ²",
-                    "value": tau_squared,
-                    "issue": f"Very large τ² value (got {tau_squared})",
-                    "interpretation": "May indicate data issues or extreme heterogeneity",
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "τ²",
+                        "value": tau_squared,
+                        "issue": f"Very large τ² value (got {tau_squared})",
+                        "interpretation": "May indicate data issues or extreme heterogeneity",
+                    }
+                )
 
         # Validate Q statistic
         if q_stat is not None:
             if q_stat < self.bounds.q_min:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "Q",
-                    "value": q_stat,
-                    "issue": f"Cochran's Q cannot be negative (got {q_stat})",
-                    "bound": f">= {self.bounds.q_min}",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "Q",
+                        "value": q_stat,
+                        "issue": f"Cochran's Q cannot be negative (got {q_stat})",
+                        "bound": f">= {self.bounds.q_min}",
+                    }
+                )
 
             # Check Q against degrees of freedom
             if df is not None and q_stat < df * 0.1:
                 # Q much smaller than df is unusual
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "statistic": "Q",
-                    "value": q_stat,
-                    "issue": f"Q ({q_stat}) much smaller than df ({df})",
-                    "interpretation": "Very low heterogeneity or potential calculation error",
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "statistic": "Q",
+                        "value": q_stat,
+                        "issue": f"Q ({q_stat}) much smaller than df ({df})",
+                        "interpretation": "Very low heterogeneity or potential calculation error",
+                    }
+                )
 
         # Validate H²
-        if h_squared is not None:
-            if h_squared < self.bounds.h_squared_min:
-                errors.append({
+        if h_squared is not None and h_squared < self.bounds.h_squared_min:
+            errors.append(
+                {
                     "claim_id": claim.claim_id,
                     "statistic": "H²",
                     "value": h_squared,
                     "issue": f"H² must be >= 1 by definition (got {h_squared})",
                     "bound": f">= {self.bounds.h_squared_min}",
-                })
+                }
+            )
 
         # Cross-validate I² and H² relationship
         # I² = (H² - 1) / H²  =>  H² = 1 / (1 - I²/100)
-        if i_squared is not None and h_squared is not None:
-            if i_squared < 100:
-                expected_h2 = 1.0 / (1.0 - i_squared / 100.0)
-                tolerance = 0.1 * expected_h2  # 10% tolerance
-                if abs(h_squared - expected_h2) > tolerance:
-                    errors.append({
+        if i_squared is not None and h_squared is not None and i_squared < 100:
+            expected_h2 = 1.0 / (1.0 - i_squared / 100.0)
+            tolerance = 0.1 * expected_h2  # 10% tolerance
+            if abs(h_squared - expected_h2) > tolerance:
+                errors.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"I² ({i_squared}%) and H² ({h_squared}) are inconsistent",
                         "expected_h2": round(expected_h2, 4),
                         "formula": "H² = 1 / (1 - I²/100)",
-                    })
+                    }
+                )
 
         # Cross-validate Q, df, and I² relationship
         # I² = max(0, (Q - df) / Q * 100)
-        if q_stat is not None and df is not None and i_squared is not None:
-            if q_stat > 0:
-                expected_i2 = max(0, (q_stat - df) / q_stat * 100)
-                tolerance = 5.0  # 5 percentage points tolerance
-                if abs(i_squared - expected_i2) > tolerance:
-                    warnings.append({
+        if q_stat is not None and df is not None and i_squared is not None and q_stat > 0:
+            expected_i2 = max(0, (q_stat - df) / q_stat * 100)
+            tolerance = 5.0  # 5 percentage points tolerance
+            if abs(i_squared - expected_i2) > tolerance:
+                warnings.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"I² ({i_squared}%) and Q/df relationship mismatch",
                         "expected_i2": round(expected_i2, 2),
                         "q_stat": q_stat,
                         "df": df,
                         "formula": "I² = max(0, (Q - df) / Q × 100)",
-                    })
+                    }
+                )
 
         # Validate confidence intervals
         i2_lower = self._get_stat(claim, ["i2_lower", "i_squared_lower", "i2_ci_lower"])
@@ -260,42 +291,51 @@ class HeterogeneityValidator(Validator):
 
         if i2_lower is not None and i2_upper is not None:
             if i2_lower > i2_upper:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"I² CI lower ({i2_lower}) > upper ({i2_upper})",
-                })
-            if i_squared is not None:
-                if i_squared < i2_lower or i_squared > i2_upper:
-                    # This is a WARNING not an ERROR because:
-                    # 1. Some estimation methods (e.g., Q-profile) can produce CIs
-                    #    that don't contain the point estimate
-                    # 2. Truncation at 0% can cause this legitimately
-                    # 3. Different CI methods may use different estimators
-                    warnings.append({
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"I² CI lower ({i2_lower}) > upper ({i2_upper})",
+                    }
+                )
+            # This is a WARNING not an ERROR because:
+            # 1. Some estimation methods (e.g., Q-profile) can produce CIs
+            #    that don't contain the point estimate
+            # 2. Truncation at 0% can cause this legitimately
+            # 3. Different CI methods may use different estimators
+            if (i_squared is not None) and (i_squared < i2_lower or i_squared > i2_upper):
+                warnings.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"I² point estimate ({i_squared}%) outside CI [{i2_lower}%, {i2_upper}%]",
                         "note": "May be valid with certain estimation methods (e.g., Q-profile CI)",
-                    })
+                    }
+                )
 
         # Check number of studies
         if k is not None:
             if k < 2:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"Cannot compute heterogeneity with k < 2 studies (got k={k})",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"Cannot compute heterogeneity with k < 2 studies (got k={k})",
+                    }
+                )
             elif k < 5:
-                warnings.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"Low study count (k={k}) may give imprecise heterogeneity estimates",
-                })
+                warnings.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"Low study count (k={k}) may give imprecise heterogeneity estimates",
+                    }
+                )
 
         return errors, warnings
 
-    def _validate_effect_size_heterogeneity(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_effect_size_heterogeneity(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate heterogeneity statistics embedded in effect size claims."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Check if effect size claim has heterogeneity metadata
         if not self._is_heterogeneity_claim(claim):
@@ -312,7 +352,7 @@ class HeterogeneityValidator(Validator):
 
         return het_errors, het_warnings
 
-    def _get_stat(self, claim: NumericClaim, keys: list[str]) -> Optional[float]:
+    def _get_stat(self, claim: NumericClaim, keys: list[str]) -> float | None:
         """Get a statistic from claim metadata by trying multiple keys."""
         for key in keys:
             # Try exact key
@@ -324,9 +364,10 @@ class HeterogeneityValidator(Validator):
             # Try lowercase
             key_lower = key.lower()
             for k, v in claim.metadata.items():
-                if k.lower() == key_lower:
-                    if isinstance(v, (int, float)) and not math.isnan(v):
-                        return float(v)
+                if (k.lower() == key_lower) and (
+                    isinstance(v, (int, float)) and (not math.isnan(v))
+                ):
+                    return float(v)
 
         return None
 
@@ -362,7 +403,7 @@ def compute_h_squared(i_squared: float) -> float:
         H² value (>= 1)
     """
     if i_squared >= 100:
-        return float('inf')
+        return float("inf")
     return 1.0 / (1.0 - i_squared / 100.0)
 
 

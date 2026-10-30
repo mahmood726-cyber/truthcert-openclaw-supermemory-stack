@@ -3,12 +3,14 @@ Standardized error handling for TruthCert certifier.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
+
 from fastapi import HTTPException
 
 
 class ErrorCode(str, Enum):
     """Standardized error codes."""
+
     # Validation errors (400)
     INVALID_REQUEST = "INVALID_REQUEST"
     VALIDATION_FAILED = "VALIDATION_FAILED"
@@ -43,9 +45,9 @@ class TruthCertError(Exception):
         message: str,
         code: ErrorCode = ErrorCode.INTERNAL_ERROR,
         status_code: int = 500,
-        details: Optional[dict[str, Any]] = None,
-        hint: Optional[str] = None,
-    ):
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
+    ) -> None:
         self.message = message
         self.code = code
         self.status_code = status_code
@@ -79,9 +81,9 @@ class ValidationError(TruthCertError):
         self,
         message: str,
         code: ErrorCode = ErrorCode.VALIDATION_FAILED,
-        details: Optional[dict[str, Any]] = None,
-        hint: Optional[str] = None,
-    ):
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
+    ) -> None:
         super().__init__(
             message=message,
             code=code,
@@ -98,8 +100,8 @@ class NotFoundError(TruthCertError):
         self,
         message: str,
         code: ErrorCode = ErrorCode.BUNDLE_NOT_FOUND,
-        details: Optional[dict[str, Any]] = None,
-    ):
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(
             message=message,
             code=code,
@@ -115,9 +117,9 @@ class ConfigurationError(TruthCertError):
         self,
         message: str,
         code: ErrorCode = ErrorCode.SIGNING_KEY_NOT_CONFIGURED,
-        details: Optional[dict[str, Any]] = None,
-        hint: Optional[str] = None,
-    ):
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
+    ) -> None:
         super().__init__(
             message=message,
             code=code,
@@ -133,8 +135,8 @@ class RateLimitError(TruthCertError):
     def __init__(
         self,
         message: str = "Rate limit exceeded. Please try again later.",
-        details: Optional[dict[str, Any]] = None,
-    ):
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(
             message=message,
             code=ErrorCode.RATE_LIMITED,
@@ -150,7 +152,7 @@ class MemoryLeakError(ValidationError):
         self,
         claim_id: str,
         evidence_uri: str,
-    ):
+    ) -> None:
         super().__init__(
             message=f"Memory cited as evidence in claim {claim_id}: {evidence_uri}",
             code=ErrorCode.MEMORY_LEAK_DETECTED,
@@ -211,6 +213,6 @@ def handle_exception(exc: Exception) -> HTTPException:
         status_code=500,
         detail={
             "error": ErrorCode.INTERNAL_ERROR.value,
-            "message": str(exc),
+            "message": "Internal server error",
         },
     )

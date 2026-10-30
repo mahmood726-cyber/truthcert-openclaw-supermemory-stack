@@ -48,11 +48,13 @@ def main():
             "lower_bound": 0.72,
             "upper_bound": 0.99,
             "standard_error": 0.08,
-            "evidence": [{
-                "source_type": "oa_document",
-                "uri": "doi:10.1001/jama.2024.test",
-                "content_hash": "sha256:" + "a" * 64
-            }]
+            "evidence": [
+                {
+                    "source_type": "oa_document",
+                    "uri": "doi:10.1001/jama.2024.test",
+                    "content_hash": "sha256:" + "a" * 64,
+                }
+            ],
         },
         {
             "claim_id": "api-i2-001",
@@ -61,22 +63,20 @@ def main():
             "unit": "%",
             "lower_bound": 12.5,
             "upper_bound": 68.4,
-            "evidence": [{
-                "source_type": "oa_document",
-                "uri": "doi:10.1001/jama.2024.test",
-                "content_hash": "sha256:" + "a" * 64
-            }]
-        }
+            "evidence": [
+                {
+                    "source_type": "oa_document",
+                    "uri": "doi:10.1001/jama.2024.test",
+                    "content_hash": "sha256:" + "a" * 64,
+                }
+            ],
+        },
     ]
     print(f"    Prepared {len(claims)} claims")
 
     # Certify
     print("\n[3] Submitting for certification...")
-    result = glue.certify_claims(
-        claims=claims,
-        policy_id="silver",
-        metadata={"source": "api_demo"}
-    )
+    result = glue.certify_claims(claims=claims, policy_id="silver", metadata={"source": "api_demo"})
 
     print(f"    Outcome: {result.outcome}")
     if result.outcome == "PASS":
@@ -97,7 +97,7 @@ def main():
     glue.remember(
         text="Completed meta-analysis certification via API",
         tags=["demo", "api-test"],
-        memory_type="note"
+        memory_type="note",
     )
     print("    Stored note to memory")
 

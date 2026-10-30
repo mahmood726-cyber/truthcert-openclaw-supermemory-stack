@@ -2,26 +2,25 @@
 Pytest configuration and shared fixtures.
 """
 
-import os
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from certifier.models import (
-    NumericClaim,
+    CertificationProfile,
+    ClaimType,
     EvidenceLocator,
     EvidenceType,
-    ClaimType,
-    ScopeLock,
+    NumericClaim,
     Policy,
+    ScopeLock,
     ValidatorConfig,
-    CertificationProfile,
 )
 from certifier.signing import generate_keypair
-from memory.schema import MemoryItem, MemoryType, MemorySource, MemoryProfile
 from memory.backend_local_sqlite import LocalSQLiteBackend
+from memory.schema import MemoryItem, MemoryProfile, MemorySource, MemoryType
 
 
 @pytest.fixture
@@ -47,7 +46,7 @@ def sample_evidence():
         source_type=EvidenceType.OA_DOCUMENT,
         uri="https://example.com/paper.pdf",
         content_hash="sha256:abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234",
-        extracted_at=datetime.now(timezone.utc),
+        extracted_at=datetime.now(UTC),
         page=5,
         section="Results",
     )
@@ -188,4 +187,5 @@ def setup_test_env(temp_dir, monkeypatch):
 
     # Cleanup: reset job store singleton
     from certifier.job_store import reset_job_store
+
     reset_job_store()

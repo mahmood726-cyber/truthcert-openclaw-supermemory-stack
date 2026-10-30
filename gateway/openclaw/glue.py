@@ -5,9 +5,9 @@ This module provides the integration between OpenClaw runtime and TruthCert cert
 """
 
 import os
-from datetime import datetime, timezone
-from typing import Any, Optional
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Self
 
 import httpx
 
@@ -17,11 +17,12 @@ from memory.commands import MemoryCommands
 @dataclass
 class CertificationResult:
     """Result from certification request."""
+
     bundle_id: str
     outcome: str
     errors: list[str]
     warnings: list[str]
-    receipt: Optional[dict[str, Any]] = None
+    receipt: dict[str, Any] | None = None
 
 
 class TruthCertGlue:
@@ -36,10 +37,10 @@ class TruthCertGlue:
 
     def __init__(
         self,
-        base_url: Optional[str] = None,
+        base_url: str | None = None,
         timeout: int = 30,
-        memory_commands: Optional[MemoryCommands] = None,
-    ):
+        memory_commands: MemoryCommands | None = None,
+    ) -> None:
         self.base_url = base_url or os.environ.get("TRUTHCERT_URL", "http://localhost:8000")
         self.timeout = int(os.environ.get("TRUTHCERT_TIMEOUT", timeout))
         self.memory = memory_commands or MemoryCommands()
@@ -49,7 +50,7 @@ class TruthCertGlue:
         self,
         claims: list[dict[str, Any]],
         policy_id: str = "silver",
-        metadata: Optional[dict[str, Any]] = None,
+        metadata: dict[str, Any] | None = None,
         store_result: bool = True,
     ) -> CertificationResult:
         """
@@ -125,7 +126,10 @@ class TruthCertGlue:
                 },
             )
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Expected an object from the certification service")
+            return payload
 
         except httpx.HTTPError as e:
             return {
@@ -136,8 +140,8 @@ class TruthCertGlue:
     def submit_job(
         self,
         policy_id: str = "silver",
-        input_path: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        input_path: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Submit a certification job.
@@ -160,7 +164,10 @@ class TruthCertGlue:
                 },
             )
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Expected an object from the certification service")
+            return payload
 
         except httpx.HTTPError as e:
             return {
@@ -172,7 +179,10 @@ class TruthCertGlue:
         try:
             response = self.client.get(f"/jobs/{job_id}")
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Expected an object from the certification service")
+            return payload
 
         except httpx.HTTPError as e:
             return {
@@ -200,7 +210,7 @@ class TruthCertGlue:
     def remember(
         self,
         text: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         memory_type: str = "note",
     ) -> dict[str, Any]:
         """Store to memory."""
@@ -229,14 +239,14 @@ class TruthCertGlue:
         except httpx.HTTPError:
             return False
 
-    def close(self):
+    def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: object) -> None:
         self.close()
 
 
@@ -244,7 +254,7 @@ class TruthCertGlue:
 def run_daily_certification(
     input_dir: str,
     policy_id: str = "silver",
-    output_dir: Optional[str] = None,
+    output_dir: str | None = None,
 ) -> dict[str, Any]:
     """
     Run daily certification job.
@@ -277,7 +287,7 @@ def run_daily_certification(
             metadata={
                 "source": "daily_cron",
                 "input_dir": str(input_path),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             },
         )
 

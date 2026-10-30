@@ -14,22 +14,24 @@ Commands:
 import json
 import os
 import sys
+from datetime import UTC
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
+from rich.table import Table
+
+from certifier.signing import VerificationError
 
 console = Console()
 
 
 @click.group()
 @click.version_option(version="1.0.0")
-def cli():
+def cli() -> None:
     """TruthCert CLI - Fail-closed certification for numeric claims."""
-    pass
 
 
 # =============================================================================
@@ -41,9 +43,9 @@ def cli():
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.option("--policy", "-p", default="policies/silver.json", help="Policy file path")
 @click.option("--output", "-o", default=None, help="Output plan file")
-def plan(input_dir: str, policy: str, output: Optional[str]):
+def plan(input_dir: str, policy: str, output: str | None) -> None:
     """Plan a certification job from input directory."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     input_path = Path(input_dir)
     policy_path = Path(policy)
@@ -60,12 +62,14 @@ def plan(input_dir: str, policy: str, output: Optional[str]):
     claims_files = list(input_path.glob("*.jsonl")) + list(input_path.glob("claims*.json"))
 
     plan_data = {
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "input_dir": str(input_path.absolute()),
         "policy": policy_data.get("policy_id", policy_path.stem),
         "profile": policy_data.get("profile", "SILVER"),
         "claims_files": [str(f) for f in claims_files],
-        "validators": [v["name"] for v in policy_data.get("validators", []) if v.get("enabled", True)],
+        "validators": [
+            v["name"] for v in policy_data.get("validators", []) if v.get("enabled", True)
+        ],
     }
 
     # Output plan
@@ -79,7 +83,7 @@ def plan(input_dir: str, policy: str, output: Optional[str]):
 
 @cli.command()
 @click.argument("job_spec", type=click.Path(exists=True))
-def run(job_spec: str):
+def run(job_spec: str) -> None:
     """Run a certification job from spec file."""
     import httpx
 
@@ -109,12 +113,12 @@ def run(job_spec: str):
         _run_local_certification(spec)
 
 
-def _run_local_certification(spec: dict):
+def _run_local_certification(spec: dict[str, Any]) -> None:
     """Run certification locally without server."""
-    from certifier.models import NumericClaim, ScopeLock, Policy, CertificationProfile
     from certifier.bundle import create_bundle
-    from certifier.validators import ValidatorRegistry
     from certifier.constants import Severity
+    from certifier.models import NumericClaim, Policy, ScopeLock
+    from certifier.validators import ValidatorRegistry
 
     # Load policy
     policy_path = Path(f"policies/{spec.get('policy', 'silver')}.json")
@@ -148,7 +152,7 @@ def _run_local_certification(spec: dict):
     )
 
     # Run validation pipeline
-    from certifier.models import ValidatorResult, ValidationSummary
+    from certifier.models import ValidationSummary
 
     pipeline = ValidatorRegistry.create_pipeline(policy.validators)
     results = []
@@ -157,7 +161,9 @@ def _run_local_certification(spec: dict):
         for validator in pipeline:
             result = validator.run(claims, scope_lock, {"policy": policy})
             results.append(result)
-            status = "[green]PASS[/green]" if result.passed else f"[red]{result.severity.value}[/red]"
+            status = (
+                "[green]PASS[/green]" if result.passed else f"[red]{result.severity.value}[/red]"
+            )
             console.print(f"  {validator.name}: {status}")
 
     # Summarize
@@ -195,7 +201,7 @@ def _run_local_certification(spec: dict):
 @click.argument("claims_file", type=click.Path(exists=True))
 @click.option("--policy", "-p", default="silver", help="Policy ID or file path")
 @click.option("--output", "-o", default=None, help="Output directory")
-def certify(claims_file: str, policy: str, output: Optional[str]):
+def certify(claims_file: str, policy: str, output: str | None) -> None:
     """Certify claims from a JSONL file."""
     from certifier.models import NumericClaim
 
@@ -220,19 +226,71 @@ def certify(claims_file: str, policy: str, output: Optional[str]):
 @click.argument("bundle_path", type=click.Path(exists=True))
 @click.option("--check-signature/--no-check-signature", default=True)
 @click.option("--check-scope-lock/--no-check-scope-lock", default=True)
-def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
-    """Verify a bundle's integrity and signature."""
-    from certifier.bundle import load_bundle
-    from certifier.signing import verify_signature
-    from certifier.models import ScopeLock
+def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool) -> None:
+    """Verify a directory or a safely isolated bundle tarball."""
+    import tarfile
+    from tempfile import TemporaryDirectory
 
-    bundle_path = Path(bundle_path)
-    if bundle_path.suffix == ".gz":
-        # Extract tarball first
-        import tarfile
-        with tarfile.open(bundle_path, "r:gz") as tar:
-            tar.extractall(bundle_path.parent)
-        bundle_path = bundle_path.with_suffix("").with_suffix("")
+    path = Path(bundle_path)
+    if path.suffix != ".gz":
+        return _verify_directory(path, check_signature, check_scope_lock)
+
+    # Only our .tar.gz bundle format is supported, not arbitrary gzip files.
+    if not path.name.endswith(".tar.gz"):
+        raise click.ClickException("Expected a .tar.gz bundle archive")
+    with TemporaryDirectory(prefix="truthcert-verify-") as temporary_dir:
+        try:
+            extracted = _extract_verified_bundle(path, Path(temporary_dir))
+            return _verify_directory(extracted, check_signature, check_scope_lock)
+        except (OSError, ValueError, tarfile.TarError) as exc:
+            raise click.ClickException(f"Unsafe or invalid bundle archive: {exc}") from exc
+
+
+def _extract_verified_bundle(archive_path: Path, temporary_root: Path) -> Path:
+    """Reject escaping, linked, duplicate and oversized archive members before extraction."""
+    import tarfile
+
+    expected_name = archive_path.name[:-7]  # remove .tar.gz
+    if not expected_name or expected_name in (".", ".."):
+        raise ValueError("Invalid bundle directory name")
+
+    total_bytes = 0
+    seen = set()
+    with tarfile.open(archive_path, "r:gz") as archive:
+        # Stream metadata and refuse after 1,024 members rather than materialising
+        # an attacker-controlled member list before the limit can run.
+        for member in archive:
+            entry = member.name.rstrip("/")
+            pieces = entry.split("/")
+            if (
+                entry.startswith(("/", "\\"))
+                or "\\" in entry
+                or ":" in entry
+                or not pieces
+                or pieces[0] != expected_name
+                or any(piece in ("", ".", "..") for piece in pieces)
+                or not (member.isfile() or member.isdir())
+            ):
+                raise ValueError("Archive member escapes bundle or uses an unsafe file type")
+            folded = entry.casefold()  # also reject aliases on case-insensitive Windows
+            if folded in seen:
+                raise ValueError("Duplicate archive member")
+            seen.add(folded)
+            total_bytes += member.size
+            if len(seen) > 1024 or member.size > 50_000_000 or total_bytes > 100_000_000:
+                raise ValueError("Bundle archive exceeds conservative extraction limits")
+
+        # Python >=3.11.4 data filter; no symlinks or special members survive
+        # the strict preflight, and the fresh temporary directory is isolated.
+        archive.extractall(temporary_root, filter="data")
+
+    return temporary_root / expected_name
+
+
+def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock: bool) -> None:
+    from certifier.bundle import claims_payload_problems, load_bundle
+    from certifier.models import ScopeLock
+    from certifier.signing import verify_signature
 
     try:
         bundle_data = load_bundle(bundle_path)
@@ -241,8 +299,8 @@ def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
         sys.exit(1)
 
     manifest = bundle_data["manifest"]
-    errors = []
-    warnings = []
+    errors = claims_payload_problems(bundle_path, manifest)
+    warnings: list[str] = []
 
     # Schema check
     console.print("[bold]Schema validation...[/bold]")
@@ -265,12 +323,12 @@ def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
                 public_key_b64 = pubkey_file.read_text().strip()
                 verify_signature(manifest, signature_b64, public_key_b64)
                 console.print("  [green]✓ Signature valid[/green]")
-            except Exception as e:
+            except (OSError, ValueError, TypeError, VerificationError) as e:
                 console.print(f"  [red]✗ Signature invalid: {e}[/red]")
                 errors.append(str(e))
         else:
-            console.print("  [yellow]⚠ No signature files found[/yellow]")
-            warnings.append("Missing signature files")
+            console.print("  [red]✗ Missing signature files[/red]")
+            errors.append("Missing signature files")
 
     # Scope lock check
     if check_scope_lock:
@@ -286,8 +344,8 @@ def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
                 console.print("  [red]✗ Scope lock hash mismatch[/red]")
                 errors.append("Scope lock hash mismatch")
         else:
-            console.print("  [yellow]⚠ No scope lock file[/yellow]")
-            warnings.append("Missing scope lock")
+            console.print("  [red]✗ Missing scope lock file[/red]")
+            errors.append("Missing scope lock file")
 
     # Summary
     console.print()
@@ -296,22 +354,34 @@ def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
         for error in errors:
             console.print(f"  - {error}")
         sys.exit(1)
-    else:
-        console.print("[green]Verification PASSED[/green]")
-        if warnings:
-            for warning in warnings:
-                console.print(f"  [yellow]Warning: {warning}[/yellow]")
+    # Explicitly skipped integrity checks are diagnostic inspection, NOT
+    # an authenticated or scope-verified PASS. Fail the process status too:
+    # automation must never promote an unchecked fixture on exit code zero.
+    if not (check_signature and check_scope_lock):
+        skipped = []
+        if not check_signature:
+            skipped.append("signature")
+        if not check_scope_lock:
+            skipped.append("scope lock")
+        console.print(
+            f"[yellow]Verification INCOMPLETE (NONCERTIFYING): skipped {', '.join(skipped)}[/yellow]"
+        )
+        sys.exit(1)
+    console.print("[green]Verification PASSED[/green]")
+    if warnings:
+        for warning in warnings:
+            console.print(f"  [yellow]Warning: {warning}[/yellow]")
 
 
 @cli.command()
 @click.argument("bundle_path", type=click.Path(exists=True))
 @click.option("--deep", is_flag=True, help="Run deep audit")
-def audit(bundle_path: str, deep: bool):
+def audit(bundle_path: str, deep: bool) -> None:
     """Run audit on a bundle."""
     from certifier.bundle import load_bundle
 
-    bundle_path = Path(bundle_path)
-    bundle_data = load_bundle(bundle_path)
+    bundle_dir = Path(bundle_path)
+    bundle_data = load_bundle(bundle_dir)
 
     manifest = bundle_data["manifest"]
     claims = bundle_data.get("claims", [])
@@ -335,19 +405,18 @@ def audit(bundle_path: str, deep: bool):
         console.print("\n[bold]Deep Audit[/bold]")
         # Check each claim
         for i, claim in enumerate(claims[:5]):  # Sample first 5
-            console.print(f"  Claim {i+1}: {claim.get('claim_id', 'unknown')}")
+            console.print(f"  Claim {i + 1}: {claim.get('claim_id', 'unknown')}")
             if claim.get("evidence"):
                 console.print(f"    Evidence: {len(claim['evidence'])} sources")
 
 
 @cli.group()
-def pack():
+def pack() -> None:
     """Domain pack commands."""
-    pass
 
 
 @pack.command("test")
-def pack_test():
+def pack_test() -> None:
     """Run conformance fixtures for domain packs."""
     console.print("[bold]Running conformance tests...[/bold]")
 
@@ -368,12 +437,12 @@ def pack_test():
                 data = json.load(f)
             # Basic validation
             if "claims" in data or "claim_id" in data:
-                console.print(f"    [green]✓ Valid fixture[/green]")
+                console.print("    [green]✓ Valid fixture[/green]")
                 tests_passed += 1
             else:
-                console.print(f"    [yellow]⚠ Missing claims[/yellow]")
+                console.print("    [yellow]⚠ Missing claims[/yellow]")
                 tests_passed += 1
-        except Exception as e:
+        except (OSError, ValueError, TypeError, VerificationError) as e:
             console.print(f"    [red]✗ Error: {e}[/red]")
             tests_failed += 1
 
@@ -382,7 +451,7 @@ def pack_test():
 
 @cli.command()
 @click.option("--output", "-o", default="keys", help="Output directory")
-def keygen(output: str):
+def keygen(output: str) -> None:
     """Generate Ed25519 keypair."""
     from certifier.signing import save_keypair
 
@@ -409,16 +478,17 @@ def keygen(output: str):
 
 
 @cli.group()
-def memory():
+def memory() -> None:
     """Memory subsystem commands."""
-    pass
 
 
 @memory.command("remember")
 @click.argument("text")
 @click.option("--tags", "-t", default="", help="Comma-separated tags")
-@click.option("--type", "memory_type", default="note", type=click.Choice(["note", "decision", "runbook"]))
-def memory_remember(text: str, tags: str, memory_type: str):
+@click.option(
+    "--type", "memory_type", default="note", type=click.Choice(["note", "decision", "runbook"])
+)
+def memory_remember(text: str, tags: str, memory_type: str) -> None:
     """Remember a piece of information."""
     from memory.commands import MemoryCommands
 
@@ -436,7 +506,7 @@ def memory_remember(text: str, tags: str, memory_type: str):
 @click.argument("query")
 @click.option("--pack", is_flag=True, help="Return packed context")
 @click.option("--limit", "-n", default=10, help="Maximum results")
-def memory_recall(query: str, pack: bool, limit: int):
+def memory_recall(query: str, pack: bool, limit: int) -> None:
     """Recall memories matching a query."""
     from memory.commands import MemoryCommands
 
@@ -448,17 +518,19 @@ def memory_recall(query: str, pack: bool, limit: int):
         console.print(f"Items: {result['items_included']}, Chars: {result['total_chars']}")
     else:
         for item in result["items"]:
-            console.print(Panel(
-                f"{item['text']}\n\n[dim]Tags: {', '.join(item['tags'])}[/dim]",
-                title=f"[{item['type']}] {item['id'][:8]}..."
-            ))
+            console.print(
+                Panel(
+                    f"{item['text']}\n\n[dim]Tags: {', '.join(item['tags'])}[/dim]",
+                    title=f"[{item['type']}] {item['id'][:8]}...",
+                )
+            )
         console.print(f"\nTotal matches: {result['total_matches']}")
 
 
 @memory.command("forget")
 @click.option("--id", "item_id", default=None, help="Item ID to forget")
 @click.option("--query", "-q", default=None, help="Query to match items")
-def memory_forget(item_id: Optional[str], query: Optional[str]):
+def memory_forget(item_id: str | None, query: str | None) -> None:
     """Forget memory items."""
     from memory.commands import MemoryCommands
 
@@ -474,7 +546,7 @@ def memory_forget(item_id: Optional[str], query: Optional[str]):
 
 @memory.command("wipe")
 @click.option("--yes", is_flag=True, help="Confirm wipe")
-def memory_wipe(yes: bool):
+def memory_wipe(yes: bool) -> None:
     """Wipe all memory data."""
     from memory.commands import MemoryCommands
 
@@ -492,7 +564,7 @@ def memory_wipe(yes: bool):
 
 
 @memory.command("profile")
-def memory_profile():
+def memory_profile() -> None:
     """Show memory profile and stats."""
     from memory.commands import MemoryCommands
 
@@ -516,7 +588,7 @@ def memory_profile():
 
     # Stats
     stats = result["stats"]
-    console.print(f"\n[bold]Stats:[/bold]")
+    console.print("\n[bold]Stats:[/bold]")
     console.print(f"  Total items: {stats['total_items']}")
     console.print(f"  Total bytes: {stats['total_bytes']:,}")
     console.print(f"  By type: {stats['items_by_type']}")
@@ -525,7 +597,7 @@ def memory_profile():
 @memory.command("index-codebase")
 @click.option("--path", "-p", default=".", help="Path to codebase")
 @click.option("--max-files", default=400, help="Maximum files to index")
-def memory_index_codebase(path: str, max_files: int):
+def memory_index_codebase(path: str, max_files: int) -> None:
     """Index a codebase into memory."""
     from memory.commands import MemoryCommands
 
@@ -534,7 +606,7 @@ def memory_index_codebase(path: str, max_files: int):
     with console.status("[bold green]Indexing codebase..."):
         result = cmd.index_codebase(path=path, max_files=max_files)
 
-    console.print(f"[green]Indexed codebase:[/green]")
+    console.print("[green]Indexed codebase:[/green]")
     console.print(f"  Path: {result['repo_path']}")
     console.print(f"  Hash: {result['repo_hash']}")
     console.print(f"  Files: {result['file_count']}")
@@ -544,7 +616,7 @@ def memory_index_codebase(path: str, max_files: int):
 @memory.command("compact")
 @click.option("--strategy", default="rolling", type=click.Choice(["rolling", "threshold"]))
 @click.option("--max-age-days", default=30, help="Max age for rolling strategy")
-def memory_compact(strategy: str, max_age_days: int):
+def memory_compact(strategy: str, max_age_days: int) -> None:
     """Compact memory by summarizing old items."""
     from memory.commands import MemoryCommands
 
@@ -553,7 +625,7 @@ def memory_compact(strategy: str, max_age_days: int):
     with console.status("[bold green]Compacting memory..."):
         result = cmd.compact(strategy=strategy, max_age_days=max_age_days)
 
-    console.print(f"[green]Compaction complete:[/green]")
+    console.print("[green]Compaction complete:[/green]")
     console.print(f"  Strategy: {result.get('strategy', strategy)}")
     console.print(f"  Items processed: {result.get('items_processed', 0)}")
     console.print(f"  Summaries created: {result.get('summaries_created', 0)}")

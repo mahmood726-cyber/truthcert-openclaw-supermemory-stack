@@ -3,29 +3,51 @@ Async SQLite backend with FTS5 for memory storage.
 Uses aiosqlite for non-blocking database operations in async applications.
 """
 
+from __future__ import annotations
+
 import asyncio
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Concatenate, ParamSpec, TypeVar
 
-try:
-    import aiosqlite
-except ImportError:
-    aiosqlite = None
+import aiosqlite
 
+from .fts5_sanitizer import sanitize_fts5_query
 from .schema import (
     MemoryItem,
-    MemoryType,
     MemorySensitivity,
     MemorySource,
     MemoryStats,
+    MemoryType,
     RecallResult,
     RetentionPolicy,
 )
-from .fts5_sanitizer import sanitize_fts5_query
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
+
+
+def _serialized_write(
+    operation: Callable[Concatenate[AsyncLocalSQLiteBackend, _P], Awaitable[_R]],
+) -> Callable[Concatenate[AsyncLocalSQLiteBackend, _P], Awaitable[_R]]:
+    """Serialize writes without sacrificing concurrent reads or hiding SQLite errors."""
+
+    @wraps(operation)
+    async def guarded(
+        self: AsyncLocalSQLiteBackend,
+        /,
+        *args: _P.args,
+        **kwargs: _P.kwargs,
+    ) -> _R:
+        async with self._write_lock:
+            return await operation(self, *args, **kwargs)
+
+    return guarded
 
 
 class AsyncLocalSQLiteBackend:
@@ -40,30 +62,30 @@ class AsyncLocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(self, db_path: str = "./memory.db", pool_size: int = 5):
-        if aiosqlite is None:
-            raise ImportError(
-                "aiosqlite is required for async operations. "
-                "Install with: pip install aiosqlite"
-            )
+    def __init__(self, db_path: str = "./memory.db", pool_size: int = 5) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.pool_size = pool_size
         self._pool: list[aiosqlite.Connection] = []
         self._pool_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()
         self._initialized = False
 
-    async def initialize(self):
-        """Initialize the database and connection pool."""
-        if self._initialized:
-            return
+    async def initialize(self) -> None:
+        """Initialize the schema exactly once even with concurrent first-use calls."""
+        async with self._init_lock:
+            if self._initialized:
+                return
 
-        # Create initial connection to set up schema
-        async with aiosqlite.connect(str(self.db_path)) as conn:
-            conn.row_factory = aiosqlite.Row
-            await self._init_schema(conn)
+            # WAL is a persistent database setting; set it once, not every time
+            # a parallel reader opens a connection (which can lock on Windows).
+            async with aiosqlite.connect(str(self.db_path), timeout=30.0) as conn:
+                conn.row_factory = aiosqlite.Row
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await self._init_schema(conn)
 
-        self._initialized = True
+            self._initialized = True
 
     async def _get_connection(self) -> aiosqlite.Connection:
         """Get a connection from the pool or create a new one."""
@@ -71,13 +93,12 @@ class AsyncLocalSQLiteBackend:
             if self._pool:
                 return self._pool.pop()
 
-        conn = await aiosqlite.connect(str(self.db_path))
+        conn = await aiosqlite.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = aiosqlite.Row
-        await conn.execute("PRAGMA journal_mode=WAL")
         await conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
-    async def _return_connection(self, conn: aiosqlite.Connection):
+    async def _return_connection(self, conn: aiosqlite.Connection) -> None:
         """Return a connection to the pool."""
         async with self._pool_lock:
             if len(self._pool) < self.pool_size:
@@ -85,14 +106,14 @@ class AsyncLocalSQLiteBackend:
             else:
                 await conn.close()
 
-    async def close(self):
+    async def close(self) -> None:
         """Close all connections in the pool."""
         async with self._pool_lock:
             for conn in self._pool:
                 await conn.close()
             self._pool.clear()
 
-    async def _init_schema(self, conn: aiosqlite.Connection):
+    async def _init_schema(self, conn: aiosqlite.Connection) -> None:
         """Initialize database schema."""
         cursor = await conn.cursor()
 
@@ -168,6 +189,7 @@ class AsyncLocalSQLiteBackend:
 
         await conn.commit()
 
+    @_serialized_write
     async def store(self, item: MemoryItem) -> str:
         """
         Store a memory item asynchronously.
@@ -191,38 +213,44 @@ class AsyncLocalSQLiteBackend:
             # Check for duplicate content
             await cursor.execute(
                 "SELECT id FROM memory_items WHERE content_hash = ? AND deleted = 0",
-                (content_hash,)
+                (content_hash,),
             )
             existing = await cursor.fetchone()
             if existing:
-                return existing["id"]
+                existing_id = existing["id"]
+                if not isinstance(existing_id, str):
+                    raise TypeError("Invalid memory identifier in database")
+                return existing_id
 
             # Insert new item
-            await cursor.execute("""
+            await cursor.execute(
+                """
                 INSERT INTO memory_items (
                     id, created_at_utc, updated_at_utc, type, source,
                     tags, text, metadata, sensitivity, retention, content_hash
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                item.id,
-                item.created_at_utc.isoformat(),
-                item.updated_at_utc.isoformat(),
-                item.type.value,
-                item.source.value,
-                json.dumps(item.tags),
-                item.text,
-                json.dumps(item.metadata),
-                item.sensitivity.value,
-                json.dumps(item.retention.model_dump()),
-                content_hash,
-            ))
+            """,
+                (
+                    item.id,
+                    item.created_at_utc.isoformat(),
+                    item.updated_at_utc.isoformat(),
+                    item.type.value,
+                    item.source.value,
+                    json.dumps(item.tags),
+                    item.text,
+                    json.dumps(item.metadata),
+                    item.sensitivity.value,
+                    json.dumps(item.retention.model_dump()),
+                    content_hash,
+                ),
+            )
 
             await conn.commit()
             return item.id
         finally:
             await self._return_connection(conn)
 
-    async def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    async def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID asynchronously."""
         if not self._initialized:
             await self.initialize()
@@ -231,8 +259,7 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
             await cursor.execute(
-                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0",
-                (item_id,)
+                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0", (item_id,)
             )
             row = await cursor.fetchone()
 
@@ -246,9 +273,9 @@ class AsyncLocalSQLiteBackend:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         include_deleted: bool = False,
     ) -> RecallResult:
         """
@@ -266,6 +293,7 @@ class AsyncLocalSQLiteBackend:
             await self.initialize()
 
         import time
+
         start_time = time.perf_counter()
 
         # Sanitize query to prevent FTS5 injection
@@ -300,10 +328,11 @@ class AsyncLocalSQLiteBackend:
                 sql += f" AND ({tag_conditions})"
                 # Escape SQL LIKE wildcards properly (don't remove them, escape them)
                 # This allows literal % and _ in tag names
-                params.extend([
-                    f"%{tag.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
+                escaped_tags = [
+                    tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     for tag in tags_filter
-                ])
+                ]
+                params.extend(f"%{tag}%" for tag in escaped_tags)
 
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
@@ -324,6 +353,8 @@ class AsyncLocalSQLiteBackend:
 
             await cursor.execute(count_sql, [safe_query])
             total_row = await cursor.fetchone()
+            if total_row is None:
+                raise RuntimeError("Missing aggregate database row")
             total = total_row[0]
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -343,7 +374,7 @@ class AsyncLocalSQLiteBackend:
         self,
         limit: int = 100,
         offset: int = 0,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination asynchronously."""
@@ -374,6 +405,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
+    @_serialized_write
     async def delete(self, item_id: str, hard: bool = False) -> bool:
         """
         Delete a memory item asynchronously.
@@ -394,7 +426,7 @@ class AsyncLocalSQLiteBackend:
             else:
                 await cursor.execute(
                     "UPDATE memory_items SET deleted = 1, updated_at_utc = ? WHERE id = ?",
-                    (datetime.now(timezone.utc).isoformat(), item_id)
+                    (datetime.now(UTC).isoformat(), item_id),
                 )
 
             await conn.commit()
@@ -402,6 +434,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
+    @_serialized_write
     async def wipe(self, confirm: bool = False) -> bool:
         """
         Wipe all memory data asynchronously.
@@ -436,11 +469,17 @@ class AsyncLocalSQLiteBackend:
 
             # Total items
             await cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 0")
-            total_items = (await cursor.fetchone())[0]
+            total_row = await cursor.fetchone()
+            if total_row is None:
+                raise RuntimeError("Missing aggregate database row")
+            total_items = total_row[0]
 
             # Total bytes (approximate)
             await cursor.execute("SELECT SUM(LENGTH(text)) FROM memory_items WHERE deleted = 0")
-            total_bytes = (await cursor.fetchone())[0] or 0
+            bytes_row = await cursor.fetchone()
+            if bytes_row is None:
+                raise RuntimeError("Missing aggregate database row")
+            total_bytes = bytes_row[0] or 0
 
             # By type
             await cursor.execute("""
@@ -462,6 +501,8 @@ class AsyncLocalSQLiteBackend:
                 FROM memory_items WHERE deleted = 0
             """)
             dates = await cursor.fetchone()
+            if dates is None:
+                raise RuntimeError("Missing aggregate database row")
             oldest = datetime.fromisoformat(dates[0]) if dates[0] else None
             newest = datetime.fromisoformat(dates[1]) if dates[1] else None
 
@@ -493,6 +534,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
+    @_serialized_write
     async def compact(self, remove_deleted: bool = True) -> int:
         """
         Compact the database asynchronously.
@@ -513,7 +555,10 @@ class AsyncLocalSQLiteBackend:
 
             if remove_deleted:
                 await cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 1")
-                count = (await cursor.fetchone())[0]
+                count_row = await cursor.fetchone()
+                if count_row is None:
+                    raise RuntimeError("Missing aggregate database row")
+                count = count_row[0]
                 await cursor.execute("DELETE FROM memory_items WHERE deleted = 1")
 
             # Rebuild FTS
@@ -527,7 +572,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
-    def _row_to_item(self, row) -> MemoryItem:
+    def _row_to_item(self, row: aiosqlite.Row) -> MemoryItem:
         """Convert a database row to a MemoryItem."""
         return MemoryItem(
             id=row["id"],

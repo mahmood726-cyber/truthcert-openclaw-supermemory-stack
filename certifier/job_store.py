@@ -4,17 +4,17 @@ Provides persistent job storage that survives server restarts.
 """
 
 import json
+import os
+import queue
 import sqlite3
 import threading
-import queue
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from .constants import DEFAULT_DB_PATH, ENV_DB_PATH
-from .models import Job, JobStatus, CertificationProfile
-import os
+from .models import CertificationProfile, Job, JobStatus
 
 # Thread-safe lock for singleton initialization
 _singleton_lock = threading.Lock()
@@ -36,18 +36,18 @@ class ConnectionPool:
         db_path: str,
         pool_size: int = 5,
         timeout: float = 30.0,
-    ):
+    ) -> None:
         self.db_path = db_path
         self.pool_size = pool_size
         self.timeout = timeout
-        self._pool: queue.Queue = queue.Queue(maxsize=pool_size)
+        self._pool: queue.Queue[sqlite3.Connection] = queue.Queue(maxsize=pool_size)
         self._lock = threading.Lock()
         self._created = 0
 
         # Pre-create connections
         self._initialize_pool()
 
-    def _initialize_pool(self):
+    def _initialize_pool(self) -> None:
         """Pre-create pool connections."""
         for _ in range(min(2, self.pool_size)):  # Start with 2 connections
             self._pool.put(self._create_connection())
@@ -82,10 +82,9 @@ class ConnectionPool:
             conn = self._pool.get_nowait()
             # Health check
             if not self._health_check(conn):
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                # If the bad handle cannot be closed, refuse rather than
+                # silently continuing with a possibly leaked SQLite lock.
+                conn.close()
                 conn = self._create_connection()
             return conn
         except queue.Empty:
@@ -97,26 +96,20 @@ class ConnectionPool:
             # Wait for available connection
             return self._pool.get(timeout=self.timeout)
 
-    def return_connection(self, conn: sqlite3.Connection):
+    def return_connection(self, conn: sqlite3.Connection) -> None:
         """Return a connection to the pool."""
         try:
             self._pool.put_nowait(conn)
         except queue.Full:
-            # Pool full, close connection
-            try:
-                conn.close()
-            except Exception:
-                pass
+            # Do not hide failures to release an excess SQLite handle.
+            conn.close()
 
-    def close_all(self):
+    def close_all(self) -> None:
         """Close all connections in the pool."""
         while True:
             try:
                 conn = self._pool.get_nowait()
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                conn.close()
             except queue.Empty:
                 break
 
@@ -133,14 +126,14 @@ class JobStore:
     - Thread-safe operations
     """
 
-    def __init__(self, db_path: Optional[str] = None, pool_size: int = 5):
+    def __init__(self, db_path: str | None = None, pool_size: int = 5) -> None:
         self.db_path = Path(db_path or os.environ.get(ENV_DB_PATH, DEFAULT_DB_PATH))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), pool_size=pool_size)
         self._init_db()
 
     @contextmanager
-    def _get_connection(self):
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
         """Get a database connection from pool with context management."""
         conn = self._pool.get_connection()
         try:
@@ -152,7 +145,7 @@ class JobStore:
         finally:
             self._pool.return_connection(conn)
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize database schema."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -196,7 +189,7 @@ class JobStore:
             # Apply migrations
             self._apply_migrations(cursor)
 
-    def _apply_migrations(self, cursor):
+    def _apply_migrations(self, cursor: sqlite3.Cursor) -> None:
         """Apply any pending schema migrations."""
         cursor.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
@@ -213,7 +206,7 @@ class JobStore:
                     cursor.execute(sql)
                 cursor.execute(
                     "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
-                    (version, datetime.now(timezone.utc).isoformat())
+                    (version, datetime.now(UTC).isoformat()),
                 )
 
     def create(self, job: Job) -> Job:
@@ -228,29 +221,32 @@ class JobStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO jobs (
                     job_id, status, policy_id, profile, input_path,
                     output_bundle_id, error_message, created_at,
                     started_at, completed_at, metadata
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                job.job_id,
-                job.status.value,
-                job.policy_id,
-                job.profile.value,
-                job.input_path,
-                job.output_bundle_id,
-                job.error_message,
-                job.created_at.isoformat(),
-                job.started_at.isoformat() if job.started_at else None,
-                job.completed_at.isoformat() if job.completed_at else None,
-                json.dumps(job.metadata),
-            ))
+            """,
+                (
+                    job.job_id,
+                    job.status.value,
+                    job.policy_id,
+                    job.profile.value,
+                    job.input_path,
+                    job.output_bundle_id,
+                    job.error_message,
+                    job.created_at.isoformat(),
+                    job.started_at.isoformat() if job.started_at else None,
+                    job.completed_at.isoformat() if job.completed_at else None,
+                    json.dumps(job.metadata),
+                ),
+            )
 
         return job
 
-    def get(self, job_id: str) -> Optional[Job]:
+    def get(self, job_id: str) -> Job | None:
         """
         Get a job by ID.
 
@@ -262,10 +258,7 @@ class JobStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM jobs WHERE job_id = ?",
-                (job_id,)
-            )
+            cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
             row = cursor.fetchone()
 
             if row:
@@ -284,7 +277,8 @@ class JobStore:
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE jobs SET
                     status = ?,
                     policy_id = ?,
@@ -296,18 +290,20 @@ class JobStore:
                     completed_at = ?,
                     metadata = ?
                 WHERE job_id = ?
-            """, (
-                job.status.value,
-                job.policy_id,
-                job.profile.value,
-                job.input_path,
-                job.output_bundle_id,
-                job.error_message,
-                job.started_at.isoformat() if job.started_at else None,
-                job.completed_at.isoformat() if job.completed_at else None,
-                json.dumps(job.metadata),
-                job.job_id,
-            ))
+            """,
+                (
+                    job.status.value,
+                    job.policy_id,
+                    job.profile.value,
+                    job.input_path,
+                    job.output_bundle_id,
+                    job.error_message,
+                    job.started_at.isoformat() if job.started_at else None,
+                    job.completed_at.isoformat() if job.completed_at else None,
+                    json.dumps(job.metadata),
+                    job.job_id,
+                ),
+            )
 
         return job
 
@@ -328,8 +324,8 @@ class JobStore:
 
     def list_jobs(
         self,
-        status: Optional[JobStatus] = None,
-        policy_id: Optional[str] = None,
+        status: JobStatus | None = None,
+        policy_id: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[Job]:
@@ -349,7 +345,7 @@ class JobStore:
             cursor = conn.cursor()
 
             sql = "SELECT * FROM jobs WHERE 1=1"
-            params = []
+            params: list[str | int] = []
 
             if status:
                 sql += " AND status = ?"
@@ -367,7 +363,7 @@ class JobStore:
 
             return [self._row_to_job(row) for row in rows]
 
-    def count(self, status: Optional[JobStatus] = None) -> int:
+    def count(self, status: JobStatus | None = None) -> int:
         """
         Count jobs.
 
@@ -381,14 +377,14 @@ class JobStore:
             cursor = conn.cursor()
 
             if status:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM jobs WHERE status = ?",
-                    (status.value,)
-                )
+                cursor.execute("SELECT COUNT(*) FROM jobs WHERE status = ?", (status.value,))
             else:
                 cursor.execute("SELECT COUNT(*) FROM jobs")
 
-            return cursor.fetchone()[0]
+            count = cursor.fetchone()[0]
+            if not isinstance(count, int):
+                raise TypeError("Invalid job count in database")
+            return count
 
     def cleanup_old_jobs(self, days: int = 30) -> int:
         """
@@ -402,15 +398,18 @@ class JobStore:
         """
         from datetime import timedelta
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
+            cursor.execute(
+                """
                 DELETE FROM jobs
                 WHERE status IN ('completed', 'failed')
                 AND created_at < ?
-            """, (cutoff,))
+            """,
+                (cutoff,),
+            )
             return cursor.rowcount
 
     def close(self) -> None:
@@ -434,13 +433,15 @@ class JobStore:
             error_message=row["error_message"],
             created_at=datetime.fromisoformat(row["created_at"]),
             started_at=datetime.fromisoformat(row["started_at"]) if row["started_at"] else None,
-            completed_at=datetime.fromisoformat(row["completed_at"]) if row["completed_at"] else None,
+            completed_at=datetime.fromisoformat(row["completed_at"])
+            if row["completed_at"]
+            else None,
             metadata=json.loads(row["metadata"]),
         )
 
 
 # Global job store instance
-_job_store: Optional[JobStore] = None
+_job_store: JobStore | None = None
 
 
 def get_job_store() -> JobStore:
@@ -459,7 +460,7 @@ def get_job_store() -> JobStore:
     return _job_store
 
 
-def init_job_store(db_path: Optional[str] = None) -> JobStore:
+def init_job_store(db_path: str | None = None) -> JobStore:
     """
     Initialize and return the global job store (thread-safe).
 
@@ -471,6 +472,12 @@ def init_job_store(db_path: Optional[str] = None) -> JobStore:
     """
     global _job_store
     with _singleton_lock:
+        # On Windows, overwriting the singleton without closing the old
+        # pool leaves open SQLite handles and can lock or leak the old DB.
+        # A close failure must prevent replacement, not be ignored.
+        if _job_store is not None:
+            _job_store.close()
+        _job_store = None
         _job_store = JobStore(db_path)
         return _job_store
 
@@ -484,8 +491,7 @@ def reset_job_store() -> None:
     global _job_store
     with _singleton_lock:
         if _job_store is not None:
-            try:
-                _job_store.close()
-            except Exception:
-                pass
+            # Preserve the reference and surface failures to release DB
+            # handles, rather than claiming reset succeeded.
+            _job_store.close()
         _job_store = None

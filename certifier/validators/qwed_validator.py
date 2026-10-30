@@ -13,11 +13,11 @@ Checks performed:
 6. Variance/SE consistency (var = SE²)
 """
 
-from typing import Any, Optional
+from typing import Any
 
 from ..constants import Severity
-from ..models import NumericClaim, ScopeLock, ValidatorResult, ValidatorConfig
-from ..qwed import QWEDVerifier, verify_all_claims, get_verification_summary, VerificationStatus
+from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
+from ..qwed import QWEDVerifier, VerificationStatus, get_verification_summary
 from .base import Validator, ValidatorRegistry
 
 
@@ -40,7 +40,7 @@ class QWEDValidator(Validator):
     description = "QWED deterministic mathematical verification"
     default_severity = Severity.WARN
 
-    def __init__(self, config: Optional[ValidatorConfig] = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
 
@@ -61,8 +61,8 @@ class QWEDValidator(Validator):
     ) -> ValidatorResult:
         """Run QWED verification on all claims."""
         all_results = []
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         for claim in claims:
             claim_results = self.verifier.verify_claim(claim)
@@ -72,28 +72,34 @@ class QWEDValidator(Validator):
             for result in claim_results:
                 if result.status == VerificationStatus.FAILED:
                     if self.strict_mode:
-                        errors.append({
-                            "claim_id": result.claim_id,
-                            "check_type": result.check_type,
-                            "issue": result.message,
-                            "expected": result.expected,
-                            "actual": result.actual,
-                            "tolerance": result.tolerance,
-                        })
+                        errors.append(
+                            {
+                                "claim_id": result.claim_id,
+                                "check_type": result.check_type,
+                                "issue": result.message,
+                                "expected": result.expected,
+                                "actual": result.actual,
+                                "tolerance": result.tolerance,
+                            }
+                        )
                     else:
-                        warnings.append({
+                        warnings.append(
+                            {
+                                "claim_id": result.claim_id,
+                                "check_type": result.check_type,
+                                "issue": result.message,
+                                "expected": result.expected,
+                                "actual": result.actual,
+                            }
+                        )
+                elif result.status == VerificationStatus.ERROR:
+                    warnings.append(
+                        {
                             "claim_id": result.claim_id,
                             "check_type": result.check_type,
-                            "issue": result.message,
-                            "expected": result.expected,
-                            "actual": result.actual,
-                        })
-                elif result.status == VerificationStatus.ERROR:
-                    warnings.append({
-                        "claim_id": result.claim_id,
-                        "check_type": result.check_type,
-                        "issue": f"Verification error: {result.message}",
-                    })
+                            "issue": f"Verification error: {result.message}",
+                        }
+                    )
 
         # Get summary statistics
         summary = get_verification_summary(all_results)
@@ -114,8 +120,8 @@ class QWEDValidator(Validator):
             severity=severity,
             message=(
                 f"QWED: {summary['verified']}/{summary['total_checks']} checks passed "
-                f"({summary['pass_rate']*100:.0f}%)"
-                if summary['total_checks'] > 0
+                f"({summary['pass_rate'] * 100:.0f}%)"
+                if summary["total_checks"] > 0
                 else "QWED: No verifiable claims"
             ),
             details={
@@ -151,8 +157,8 @@ class MathConsistencyValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Run basic math consistency checks."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         checked_count = 0
 
         for claim in claims:
@@ -161,73 +167,93 @@ class MathConsistencyValidator(Validator):
             # Check 1: CI bounds ordering
             if claim.lower_bound is not None and claim.upper_bound is not None:
                 if claim.lower_bound > claim.upper_bound:
-                    errors.append({
-                        "claim_id": claim.claim_id,
-                        "issue": f"CI bounds inverted: [{claim.lower_bound}, {claim.upper_bound}]",
-                    })
+                    errors.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "issue": f"CI bounds inverted: [{claim.lower_bound}, {claim.upper_bound}]",
+                        }
+                    )
                 elif claim.value < claim.lower_bound or claim.value > claim.upper_bound:
-                    warnings.append({
-                        "claim_id": claim.claim_id,
-                        "issue": f"Point estimate ({claim.value}) outside CI",
-                    })
+                    warnings.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "issue": f"Point estimate ({claim.value}) outside CI",
+                        }
+                    )
 
             # Check 2: Non-negative measures
-            if claim.claim_type.value in ("risk_ratio", "odds_ratio", "hazard_ratio"):
-                if claim.value <= 0:
-                    errors.append({
+            if (claim.claim_type.value in ("risk_ratio", "odds_ratio", "hazard_ratio")) and (
+                claim.value <= 0
+            ):
+                errors.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"Ratio measure must be positive, got {claim.value}",
-                    })
+                    }
+                )
 
             # Check 3: Bounded measures
-            if claim.claim_type.value == "correlation":
-                if not -1 <= claim.value <= 1:
-                    errors.append({
+            if claim.claim_type.value == "correlation" and not -1 <= claim.value <= 1:
+                errors.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"Correlation must be in [-1, 1], got {claim.value}",
-                    })
+                    }
+                )
 
-            if claim.claim_type.value in ("sensitivity", "specificity", "ppv", "npv"):
-                if not 0 <= claim.value <= 1:
-                    errors.append({
+            if (claim.claim_type.value in ("sensitivity", "specificity", "ppv", "npv")) and (
+                not 0 <= claim.value <= 1
+            ):
+                errors.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"{claim.claim_type.value} must be in [0, 1], got {claim.value}",
-                    })
+                    }
+                )
 
-            if claim.claim_type.value == "i_squared":
-                if not 0 <= claim.value <= 100:
-                    errors.append({
+            if claim.claim_type.value == "i_squared" and not 0 <= claim.value <= 100:
+                errors.append(
+                    {
                         "claim_id": claim.claim_id,
                         "issue": f"I² must be in [0, 100], got {claim.value}",
-                    })
+                    }
+                )
 
             # Check 4: Sample size positive integer
             if claim.sample_size is not None and claim.sample_size < 1:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"Sample size must be positive, got {claim.sample_size}",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"Sample size must be positive, got {claim.sample_size}",
+                    }
+                )
 
             # Check 5: SE non-negative
             if claim.standard_error is not None and claim.standard_error < 0:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"Standard error cannot be negative, got {claim.standard_error}",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"Standard error cannot be negative, got {claim.standard_error}",
+                    }
+                )
 
             # Check 6: Variance non-negative
             if claim.variance is not None and claim.variance < 0:
-                errors.append({
-                    "claim_id": claim.claim_id,
-                    "issue": f"Variance cannot be negative, got {claim.variance}",
-                })
+                errors.append(
+                    {
+                        "claim_id": claim.claim_id,
+                        "issue": f"Variance cannot be negative, got {claim.variance}",
+                    }
+                )
 
         passed = len(errors) == 0
 
         return ValidatorResult(
             validator_name=self.name,
             passed=passed,
-            severity=Severity.BLOCK if not passed else (Severity.WARN if warnings else Severity.INFO),
+            severity=Severity.BLOCK
+            if not passed
+            else (Severity.WARN if warnings else Severity.INFO),
             message=(
                 f"Math consistency: {checked_count} claims checked"
                 if passed

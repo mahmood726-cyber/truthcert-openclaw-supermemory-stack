@@ -2,19 +2,14 @@
 Tests for PCN renderer.
 """
 
-import pytest
-from pathlib import Path
-
-from renderer.pcn_renderer import PCNRenderer, RenderResult
-from certifier.models import (
-    NumericClaim,
-    ScopeLock,
-    ValidationSummary,
-    ValidatorResult,
-    CertificationProfile,
-)
 from certifier.bundle import create_bundle
 from certifier.constants import Severity
+from certifier.models import (
+    NumericClaim,
+    ValidationSummary,
+    ValidatorResult,
+)
+from renderer.pcn_renderer import PCNRenderer
 
 
 class TestPCNRenderer:
@@ -98,7 +93,7 @@ class TestPCNRenderer:
 
     def test_render_with_confidence_interval(self, sample_scope_lock, signing_keys, temp_dir):
         """Test rendering claim with confidence interval."""
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import ClaimType, EvidenceLocator, EvidenceType
 
         claim = NumericClaim(
             claim_id="ci-claim",
@@ -141,7 +136,7 @@ class TestPCNRenderer:
 
     def test_html_escaping(self, sample_scope_lock, signing_keys, temp_dir):
         """Test that HTML is properly escaped."""
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import ClaimType, EvidenceLocator, EvidenceType
 
         # Create claim with potentially dangerous content
         claim = NumericClaim(

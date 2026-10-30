@@ -19,16 +19,17 @@ Available domain packs:
 12. case-control: Case-control studies
 """
 
-from typing import Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
-from .models import ClaimType, ValidatorConfig, CertificationProfile
 from .constants import Severity
+from .models import CertificationProfile, ClaimType, ValidatorConfig
 
 
 class DomainPack(str, Enum):
     """Available domain extension packs."""
+
     META_ANALYSIS = "meta-analysis"
     NMA = "nma"
     DTA = "dta"
@@ -46,6 +47,7 @@ class DomainPack(str, Enum):
 @dataclass
 class DomainPackSpec:
     """Specification for a domain extension pack."""
+
     name: str
     display_name: str
     description: str
@@ -96,7 +98,6 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
             "meta_regression",
         ],
     ),
-
     DomainPack.NMA: DomainPackSpec(
         name="nma",
         display_name="Network Meta-Analysis",
@@ -136,7 +137,6 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
             "comparison_adjusted_funnel",
         ],
     ),
-
     DomainPack.DTA: DomainPackSpec(
         name="dta",
         display_name="Diagnostic Test Accuracy",
@@ -172,7 +172,6 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
             "quality_assessment",  # QUADAS-2
         ],
     ),
-
     DomainPack.IPDMA: DomainPackSpec(
         name="ipdma",
         display_name="Individual Participant Data Meta-Analysis",
@@ -203,7 +202,6 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
             "interaction_analyses",
         ],
     ),
-
     DomainPack.PROGNOSIS: DomainPackSpec(
         name="prognosis",
         display_name="Prognostic Factor Studies",
@@ -229,7 +227,6 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
             "adjustment_factors",
         ],
     ),
-
     DomainPack.PREDICTION: DomainPackSpec(
         name="prediction",
         display_name="Prediction Model Studies",
@@ -256,7 +253,6 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
             "calibration_assessment",
         ],
     ),
-
     DomainPack.RCT: DomainPackSpec(
         name="rct",
         display_name="Randomized Controlled Trials",
@@ -289,7 +285,7 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
 }
 
 
-def get_domain_pack(pack: DomainPack) -> DomainPackSpec:
+def get_domain_pack(pack: DomainPack) -> DomainPackSpec | None:
     """Get specification for a domain pack."""
     return DOMAIN_PACKS.get(pack)
 
@@ -334,12 +330,14 @@ def create_validator_configs_for_domain(
         else:
             severity = Severity.WARN
 
-        configs.append(ValidatorConfig(
-            name=validator_name,
-            enabled=True,
-            severity=severity,
-            params={"domain_pack": pack.value},
-        ))
+        configs.append(
+            ValidatorConfig(
+                name=validator_name,
+                enabled=True,
+                severity=severity,
+                params={"domain_pack": pack.value},
+            )
+        )
 
     return configs
 
@@ -359,13 +357,11 @@ def validate_domain_metadata(
         return [], []
 
     missing_required = [
-        key for key in spec.required_metadata_keys
-        if key not in metadata or metadata[key] is None
+        key for key in spec.required_metadata_keys if key not in metadata or metadata[key] is None
     ]
 
     missing_optional = [
-        key for key in spec.optional_metadata_keys
-        if key not in metadata or metadata[key] is None
+        key for key in spec.optional_metadata_keys if key not in metadata or metadata[key] is None
     ]
 
     return missing_required, missing_optional
@@ -377,7 +373,7 @@ def get_reporting_checklist(pack: DomainPack) -> str:
     return spec.reporting_checklist if spec else "PRISMA 2020"
 
 
-def list_available_packs() -> list[dict]:
+def list_available_packs() -> list[dict[str, Any]]:
     """List all available domain packs with their descriptions."""
     return [
         {

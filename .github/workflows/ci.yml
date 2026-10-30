@@ -71,9 +71,13 @@ jobs:
         run: ruff check .
 
       - name: Run ruff formatter check
+        # Run after a Ruff lint failure too; the job still fails on either gate.
+        if: ${{ success() || failure() }}
         run: ruff format --check .
 
       - name: Run mypy type checking
+        # Surface typing failures independently without bypassing earlier checks.
+        if: ${{ success() || failure() }}
         run: mypy certifier memory cli gateway renderer --ignore-missing-imports
 
   security:
@@ -97,7 +101,10 @@ jobs:
           pip install -e .
 
       - name: Run pip-audit for dependency vulnerabilities
-        run: pip-audit --strict
+        # Audit this local pyproject dependency tree, including transitive
+        # dependencies, without treating our unpublished editable package as PyPI.
+        # Keep strict vulnerability reporting; Bandit separately scans local code.
+        run: pip-audit . --strict
 
       - name: Run bandit for security issues
         run: bandit -r certifier memory cli gateway renderer -ll -ii

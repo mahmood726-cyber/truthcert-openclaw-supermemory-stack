@@ -2,17 +2,16 @@
 Context packer - deterministic injection of memory into prompts.
 """
 
-from typing import Any, Optional
 import hashlib
-import json
+from collections.abc import Callable
 
+from .backend_local_sqlite import LocalSQLiteBackend
 from .schema import (
     MemoryItem,
     MemoryProfile,
     PackedContext,
     RecallResult,
 )
-from .backend_local_sqlite import LocalSQLiteBackend
 
 
 class ContextPacker:
@@ -44,14 +43,14 @@ class ContextPacker:
         self,
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
-    ):
+    ) -> None:
         self.backend = backend
         self.profile = profile
 
     def pack(
         self,
         items: list[MemoryItem],
-        max_chars: Optional[int] = None,
+        max_chars: int | None = None,
         include_provenance: bool = True,
     ) -> PackedContext:
         """
@@ -120,7 +119,7 @@ class ContextPacker:
     def pack_from_recall(
         self,
         recall_result: RecallResult,
-        max_chars: Optional[int] = None,
+        max_chars: int | None = None,
     ) -> PackedContext:
         """Pack items from a recall result."""
         return self.pack(
@@ -131,8 +130,8 @@ class ContextPacker:
     def pack_for_turn(
         self,
         query: str,
-        recall_func,
-        max_chars: Optional[int] = None,
+        recall_func: Callable[..., RecallResult],
+        max_chars: int | None = None,
     ) -> PackedContext:
         """
         Pack context for a conversation turn.

@@ -6,29 +6,29 @@ import base64
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from cryptography.exceptions import InvalidSignature
 
 from .constants import (
-    ENV_SIGNING_KEY,
     ENV_PUBLIC_KEY,
+    ENV_SIGNING_KEY,
     HASH_PREFIX,
 )
-from .errors import ConfigurationError, TruthCertError, ErrorCode
+from .errors import ConfigurationError, ErrorCode, TruthCertError
 
 
 class SigningError(TruthCertError):
     """Error during signing operations."""
 
-    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
             code=ErrorCode.SIGNING_ERROR,
@@ -40,7 +40,7 @@ class SigningError(TruthCertError):
 class VerificationError(TruthCertError):
     """Error during verification operations."""
 
-    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
             code=ErrorCode.VERIFICATION_ERROR,
@@ -101,6 +101,7 @@ def save_keypair(
         # SECURITY NOTE: On Windows, use environment variables or
         # Windows Credential Manager instead of file-based keys
         import warnings
+
         warnings.warn(
             f"Could not set secure permissions on {private_key_path}. "
             "On Windows, consider using environment variables for key storage.",
@@ -130,14 +131,14 @@ def load_private_key() -> Ed25519PrivateKey:
     try:
         key_bytes = base64.b64decode(key_b64)
         return Ed25519PrivateKey.from_private_bytes(key_bytes)
-    except Exception as e:
+    except (ValueError, TypeError, ConfigurationError, UnsupportedAlgorithm) as e:
         raise ConfigurationError(
             message=f"Invalid signing key: {e}",
             details={"error": str(e)},
         )
 
 
-def load_public_key(key_b64: Optional[str] = None) -> Ed25519PublicKey:
+def load_public_key(key_b64: str | None = None) -> Ed25519PublicKey:
     """
     Load public key from string or environment variable.
 
@@ -163,7 +164,7 @@ def load_public_key(key_b64: Optional[str] = None) -> Ed25519PublicKey:
     try:
         key_bytes = base64.b64decode(key_b64)
         return Ed25519PublicKey.from_public_bytes(key_bytes)
-    except Exception as e:
+    except (ValueError, TypeError, ConfigurationError, UnsupportedAlgorithm) as e:
         raise ConfigurationError(
             message=f"Invalid public key: {e}",
             details={"error": str(e)},
@@ -177,11 +178,14 @@ def compute_content_hash(content: bytes) -> str:
 
 
 def compute_manifest_hash(manifest_data: dict[str, Any]) -> str:
-    """
-    Compute deterministic hash of manifest for signing.
-    Uses only core fields to ensure stability.
-    """
-    # Select only fields that should be signed
+    """Hash full v2 manifests; preserve historical v1 core-field signatures."""
+    if manifest_data.get("version") == "tc-bundle-v2":
+        # Include *all* v2 fields, not just the claim-payload digest: changing
+        # validation details or model metadata must also break the signature.
+        canonical = json.dumps(manifest_data, sort_keys=True, separators=(",", ":"))
+        return compute_content_hash(canonical.encode())
+
+    # Exact historical v1 scheme, retained for verifying old signatures.
     core_fields = {
         "bundle_id": manifest_data.get("bundle_id"),
         "policy_id": manifest_data.get("policy_id"),
@@ -249,7 +253,7 @@ def verify_signature(
             message="Invalid signature",
             details={"reason": "Signature does not match manifest content"},
         )
-    except Exception as e:
+    except (ValueError, TypeError, ConfigurationError, UnsupportedAlgorithm) as e:
         raise VerificationError(
             message=f"Signature verification failed: {e}",
             details={"error": str(e)},
@@ -263,7 +267,7 @@ def create_receipt(
     claim_count: int,
     signature_b64: str,
     public_key_b64: str,
-    verification_url: Optional[str] = None,
+    verification_url: str | None = None,
 ) -> dict[str, Any]:
     """Create a certification receipt."""
     return {
@@ -273,6 +277,6 @@ def create_receipt(
         "claim_count": claim_count,
         "signature": signature_b64,
         "public_key": public_key_b64,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "verification_url": verification_url,
     }

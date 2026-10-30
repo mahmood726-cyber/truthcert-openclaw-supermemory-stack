@@ -2,11 +2,11 @@
 Determinism validator - ensures reproducible computations.
 """
 
-from typing import Any
 import hashlib
 import json
+from typing import Any
 
-from ..constants import Severity, CertificationProfile
+from ..constants import CertificationProfile, Severity
 from ..models import NumericClaim, ScopeLock, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
@@ -33,7 +33,7 @@ class DeterminismValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate determinism requirements."""
-        issues = []
+        issues: list[dict[str, Any]] = []
 
         # Check if determinism is required for this profile
         require_determinism = context.get("require_determinism", False)
@@ -51,51 +51,65 @@ class DeterminismValidator(Validator):
 
         for claim in claims:
             # Check for computed claims
-            is_computed = any(
-                e.source_type.value == "computed" for e in claim.evidence
-            )
+            is_computed = any(e.source_type.value == "computed" for e in claim.evidence)
 
             if is_computed:
                 # Must have computation metadata
                 computation = claim.provenance.get("computation", {})
                 if not computation:
-                    issues.append({
-                        "claim_id": claim.claim_id,
-                        "issue": "Computed claim missing computation metadata",
-                    })
+                    issues.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "issue": "Computed claim missing computation metadata",
+                        }
+                    )
                     continue
 
                 # Check for reproducibility fields
-                required_fields = ["algorithm", "inputs_hash"]
+                required_fields = ["algorithm", "inputs_hash", "inputs"]
                 for field in required_fields:
-                    if field not in computation:
-                        issues.append({
-                            "claim_id": claim.claim_id,
-                            "issue": f"Computation metadata missing required field: {field}",
-                        })
+                    if (
+                        field not in computation
+                        or computation[field] is None
+                        or (field != "inputs" and not computation[field])
+                    ):
+                        issues.append(
+                            {
+                                "claim_id": claim.claim_id,
+                                "issue": f"Computation metadata missing required field: {field}",
+                            }
+                        )
 
                 # Verify inputs hash if provided
                 inputs = computation.get("inputs")
                 expected_hash = computation.get("inputs_hash")
-                if inputs and expected_hash:
+                if inputs is not None and expected_hash:
                     computed_hash = self._compute_inputs_hash(inputs)
                     if computed_hash != expected_hash:
-                        issues.append({
-                            "claim_id": claim.claim_id,
-                            "issue": "Computation inputs hash mismatch",
-                            "expected": expected_hash,
-                            "computed": computed_hash,
-                        })
+                        issues.append(
+                            {
+                                "claim_id": claim.claim_id,
+                                "issue": "Computation inputs hash mismatch",
+                                "expected": expected_hash,
+                                "computed": computed_hash,
+                            }
+                        )
 
                 # Check for seed if algorithm involves randomness
                 algorithm = computation.get("algorithm", "")
-                if any(kw in algorithm.lower() for kw in ["random", "monte", "bootstrap", "sample"]):
-                    if "seed" not in computation:
-                        issues.append({
+                if (
+                    any(
+                        kw in algorithm.lower() for kw in ["random", "monte", "bootstrap", "sample"]
+                    )
+                    and computation.get("seed") is None
+                ):
+                    issues.append(
+                        {
                             "claim_id": claim.claim_id,
                             "issue": "Stochastic algorithm missing seed for reproducibility",
                             "algorithm": algorithm,
-                        })
+                        }
+                    )
 
         passed = len(issues) == 0
 

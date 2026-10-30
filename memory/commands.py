@@ -3,23 +3,21 @@ Memory commands - CLI-style functions for memory operations.
 """
 
 import os
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from .schema import (
-    MemoryItem,
-    MemoryType,
-    MemorySource,
-    MemoryProfile,
-    PackedContext,
-)
 from .backend_local_sqlite import LocalSQLiteBackend
 from .capture import MemoryCapture
-from .recall import MemoryRecall
-from .packer import ContextPacker
-from .redaction import Redactor
-from .compaction import MemoryCompactor
 from .codebase_indexer import CodebaseIndexer
+from .compaction import MemoryCompactor
+from .packer import ContextPacker
+from .recall import MemoryRecall
+from .redaction import Redactor
+from .schema import (
+    MemoryItem,
+    MemoryProfile,
+    MemorySource,
+    MemoryType,
+)
 
 
 def get_default_db_path() -> str:
@@ -46,9 +44,9 @@ class MemoryCommands:
 
     def __init__(
         self,
-        db_path: Optional[str] = None,
-        profile: Optional[MemoryProfile] = None,
-    ):
+        db_path: str | None = None,
+        profile: MemoryProfile | None = None,
+    ) -> None:
         self.db_path = db_path or get_default_db_path()
         self.profile = profile or get_default_profile()
 
@@ -63,7 +61,7 @@ class MemoryCommands:
     def remember(
         self,
         text: str,
-        tags: Optional[list[str]] = None,
+        tags: list[str] | None = None,
         memory_type: str = "note",
     ) -> dict[str, Any]:
         """
@@ -111,7 +109,7 @@ class MemoryCommands:
         self,
         query: str,
         pack: bool = False,
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ) -> dict[str, Any]:
         """
         Recall memories matching a query.
@@ -154,8 +152,8 @@ class MemoryCommands:
 
     def forget(
         self,
-        item_id: Optional[str] = None,
-        query: Optional[str] = None,
+        item_id: str | None = None,
+        query: str | None = None,
     ) -> dict[str, Any]:
         """
         Forget memory items.

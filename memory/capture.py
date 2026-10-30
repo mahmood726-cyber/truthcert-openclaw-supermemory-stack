@@ -2,12 +2,12 @@
 Memory capture module - auto-capture hooks for chat and tool calls.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
-from .schema import MemoryItem, MemoryType, MemorySource, MemoryProfile
 from .backend_local_sqlite import LocalSQLiteBackend
 from .redaction import Redactor, should_capture_tool
+from .schema import MemoryItem, MemoryProfile, MemorySource, MemoryType
 
 
 class MemoryCapture:
@@ -25,8 +25,8 @@ class MemoryCapture:
         self,
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
-        redactor: Optional[Redactor] = None,
-    ):
+        redactor: Redactor | None = None,
+    ) -> None:
         self.backend = backend
         self.profile = profile
         self.redactor = redactor or Redactor()
@@ -36,8 +36,8 @@ class MemoryCapture:
         user_message: str,
         assistant_response: str,
         turn_number: int = 0,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[str]:
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
         """
         Capture a chat turn as a memory item.
 
@@ -53,12 +53,12 @@ class MemoryCapture:
         if not self.profile.auto_capture:
             return None
 
-        # Create summary of the turn
-        summary = self._summarize_turn(user_message, assistant_response)
-
-        # Redact if enabled
+        # Redact before summarizing/truncating: a truncated secret may not
+        # match the full-token redaction pattern and can otherwise leak.
         if self.profile.redact_before_store:
-            summary, _ = self.redactor.redact(summary)
+            user_message, _ = self.redactor.redact(user_message)
+            assistant_response, _ = self.redactor.redact(assistant_response)
+        summary = self._summarize_turn(user_message, assistant_response)
 
         item = MemoryItem(
             type=MemoryType.NOTE,
@@ -67,7 +67,7 @@ class MemoryCapture:
             tags=["chat", f"turn_{turn_number}"],
             metadata={
                 "turn_number": turn_number,
-                **(metadata or {}),
+                **self._safe_metadata(metadata),
             },
         )
 
@@ -79,8 +79,8 @@ class MemoryCapture:
         inputs: dict[str, Any],
         outputs: Any,
         execution_time_ms: float = 0.0,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[str]:
+        metadata: dict[str, Any] | None = None,
+    ) -> str | None:
         """
         Capture a tool call as a memory item.
 
@@ -102,24 +102,25 @@ class MemoryCapture:
             return None
 
         # Check allowlist if in selected mode
-        if self.profile.capture_mode == "selected":
-            if tool_name not in self.profile.capture_tools:
-                return None
+        if (self.profile.capture_mode == "selected") and (
+            tool_name not in self.profile.capture_tools
+        ):
+            return None
 
         # Build capture text
         parts = [f"Tool: {tool_name}"]
 
         if self.profile.store_tool_inputs:
-            input_str = str(inputs)[:500]  # Truncate
+            input_str = str(inputs)
             if self.profile.redact_before_store:
                 input_str, _ = self.redactor.redact(input_str)
-            parts.append(f"Inputs: {input_str}")
+            parts.append(f"Inputs: {input_str[:500]}")
 
         if self.profile.store_tool_results:
-            output_str = str(outputs)[:1000]  # Truncate
+            output_str = str(outputs)
             if self.profile.redact_before_store:
                 output_str, _ = self.redactor.redact(output_str)
-            parts.append(f"Outputs: {output_str}")
+            parts.append(f"Outputs: {output_str[:1000]}")
 
         text = "\n".join(parts)
 
@@ -131,7 +132,7 @@ class MemoryCapture:
             metadata={
                 "tool_name": tool_name,
                 "execution_time_ms": execution_time_ms,
-                **(metadata or {}),
+                **self._safe_metadata(metadata),
             },
         )
 
@@ -141,8 +142,8 @@ class MemoryCapture:
         self,
         decision: str,
         context: str = "",
-        tags: Optional[list[str]] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Capture a decision as a memory item.
@@ -167,8 +168,13 @@ class MemoryCapture:
             type=MemoryType.DECISION,
             source=MemorySource.CHAT,
             text=text,
-            tags=["decision"] + (tags or []),
-            metadata=metadata or {},
+            tags=["decision"]
+            + (
+                [self.redactor.redact(t)[0] for t in (tags or [])]
+                if self.profile.redact_before_store
+                else (tags or [])
+            ),
+            metadata=self._safe_metadata(metadata),
         )
 
         return self.backend.store(item)
@@ -179,7 +185,7 @@ class MemoryCapture:
         outcome: str,
         profile: str,
         claim_count: int,
-        errors: Optional[list[str]] = None,
+        errors: list[str] | None = None,
     ) -> str:
         """
         Capture a certification result as a memory item.
@@ -201,21 +207,31 @@ class MemoryCapture:
         if errors:
             text += f"Errors: {', '.join(errors)}"
 
+        if self.profile.redact_before_store:
+            text, _ = self.redactor.redact(text)
+
         item = MemoryItem(
             type=MemoryType.DECISION,
             source=MemorySource.SYSTEM,
             text=text,
             tags=["certification", outcome.lower(), profile.lower()],
-            metadata={
-                "bundle_id": bundle_id,
-                "outcome": outcome,
-                "profile": profile,
-                "claim_count": claim_count,
-                "errors": errors or [],
-            },
+            metadata=self._safe_metadata(
+                {
+                    "bundle_id": bundle_id,
+                    "outcome": outcome,
+                    "profile": profile,
+                    "claim_count": claim_count,
+                    "errors": errors or [],
+                }
+            ),
         )
 
         return self.backend.store(item)
+
+    def _safe_metadata(self, metadata: dict[str, Any] | None) -> dict[str, Any]:
+        """Apply the configured data-minimisation rule to nested metadata."""
+        raw = metadata or {}
+        return self.redactor.redact_dict(raw) if self.profile.redact_before_store else raw
 
     def _summarize_turn(
         self,
@@ -243,23 +259,23 @@ class MemoryCapture:
 
 
 # Hook registration for integration
-_capture_hooks: dict[str, list[Callable]] = {
+_capture_hooks: dict[str, list[Callable[..., None]]] = {
     "before_turn": [],
     "after_turn": [],
     "after_tool": [],
 }
 
 
-def register_capture_hook(event: str, callback: Callable) -> None:
+def register_capture_hook(event: str, callback: Callable[..., None]) -> None:
     """Register a capture hook for an event."""
     if event in _capture_hooks:
         _capture_hooks[event].append(callback)
 
 
-def trigger_capture_hooks(event: str, **kwargs) -> None:
+def trigger_capture_hooks(event: str, **kwargs: Any) -> None:
     """Trigger all hooks for an event."""
     for callback in _capture_hooks.get(event, []):
         try:
             callback(**kwargs)
-        except Exception:
-            pass  # Don't let hook errors break the flow
+        except Exception as exc:
+            raise RuntimeError("Memory capture hook failed") from exc

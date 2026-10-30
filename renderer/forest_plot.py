@@ -7,40 +7,42 @@ Only renders data from PASS bundles with valid signatures.
 
 import html
 import math
-from dataclasses import dataclass, field
-from typing import Any, Optional, List
-from pathlib import Path
+from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
 class StudyData:
     """Data for a single study in the forest plot."""
+
     study_id: str
     study_label: str
     effect_size: float
     lower_ci: float
     upper_ci: float
     weight: float = 0.0
-    n_total: Optional[int] = None
-    n_events: Optional[int] = None
-    subgroup: Optional[str] = None
+    n_total: int | None = None
+    n_events: int | None = None
+    subgroup: str | None = None
 
 
 @dataclass
 class PooledEstimate:
     """Pooled effect estimate (diamond)."""
+
     effect_size: float
     lower_ci: float
     upper_ci: float
     model: str = "random"  # "fixed" or "random"
-    i_squared: Optional[float] = None
-    tau_squared: Optional[float] = None
-    p_heterogeneity: Optional[float] = None
+    i_squared: float | None = None
+    tau_squared: float | None = None
+    p_heterogeneity: float | None = None
 
 
 @dataclass
 class ForestPlotConfig:
     """Configuration for forest plot appearance."""
+
     width: int = 800
     height_per_study: int = 25
     min_height: int = 200
@@ -63,9 +65,9 @@ class ForestPlotConfig:
 
     # Effect size scale
     null_value: float = 1.0  # 1.0 for ratios, 0.0 for differences
-    log_scale: bool = True   # Use log scale for ratio measures
-    x_min: Optional[float] = None
-    x_max: Optional[float] = None
+    log_scale: bool = True  # Use log scale for ratio measures
+    x_min: float | None = None
+    x_max: float | None = None
 
     # Labels
     effect_label: str = "Effect Size"
@@ -80,13 +82,13 @@ class ForestPlotGenerator:
     CRITICAL: Only generates plots from certified data.
     """
 
-    def __init__(self, config: Optional[ForestPlotConfig] = None):
+    def __init__(self, config: ForestPlotConfig | None = None) -> None:
         self.config = config or ForestPlotConfig()
 
     def generate(
         self,
-        studies: List[StudyData],
-        pooled: Optional[PooledEstimate] = None,
+        studies: list[StudyData],
+        pooled: PooledEstimate | None = None,
         title: str = "Forest Plot",
     ) -> str:
         """
@@ -146,7 +148,9 @@ class ForestPlotGenerator:
 
         # Add pooled estimate (diamond)
         if pooled:
-            y_pooled = c.margin_top + (len(studies) + 1) * c.height_per_study + c.height_per_study / 2
+            y_pooled = (
+                c.margin_top + (len(studies) + 1) * c.height_per_study + c.height_per_study / 2
+            )
             svg_parts.append(self._pooled_row(pooled, y_pooled, x_min, x_max, plot_width))
 
         # Add x-axis
@@ -177,7 +181,7 @@ class ForestPlotGenerator:
     def _svg_styles(self) -> str:
         """Generate SVG styles."""
         c = self.config
-        return f'''
+        return f"""
         <defs>
             <style>
                 .forest-plot {{
@@ -237,7 +241,7 @@ class ForestPlotGenerator:
                 }}
             </style>
         </defs>
-        '''
+        """
 
     def _header_row(self, y: float) -> str:
         """Generate header row."""
@@ -286,7 +290,7 @@ class ForestPlotGenerator:
                 <line x1="{c.margin_left + max(0, lower_x)}" y1="{y}"
                       x2="{c.margin_left + min(plot_width, upper_x)}" y2="{y}"
                       class="study-line"/>
-                <rect x="{c.margin_left + effect_x - point_size/2}" y="{y - point_size/2}"
+                <rect x="{c.margin_left + effect_x - point_size / 2}" y="{y - point_size / 2}"
                       width="{point_size}" height="{point_size}" class="study-point"/>
                 <text x="{c.width - c.margin_right + 10}" y="{y + 4}" class="effect-text">{effect_text}</text>
                 <text x="{c.width - 30}" y="{y + 4}" class="weight-text">{weight_text}</text>
@@ -310,8 +314,10 @@ class ForestPlotGenerator:
         upper_x = self._value_to_x(pooled.upper_ci, x_min, x_max, plot_width)
 
         diamond_height = 8
-        points = f"{c.margin_left + lower_x},{y} {c.margin_left + center_x},{y - diamond_height/2} " \
-                 f"{c.margin_left + upper_x},{y} {c.margin_left + center_x},{y + diamond_height/2}"
+        points = (
+            f"{c.margin_left + lower_x},{y} {c.margin_left + center_x},{y - diamond_height / 2} "
+            f"{c.margin_left + upper_x},{y} {c.margin_left + center_x},{y + diamond_height / 2}"
+        )
 
         model_label = "Overall (Random)" if pooled.model == "random" else "Overall (Fixed)"
         effect_text = f"{pooled.effect_size:.2f} [{pooled.lower_ci:.2f}, {pooled.upper_ci:.2f}]"
@@ -336,11 +342,13 @@ class ForestPlotGenerator:
         y_axis = height - c.margin_bottom + 20
 
         # Axis line
-        parts = [f'''
+        parts = [
+            f'''
             <line x1="{c.margin_left}" y1="{y_axis - 10}"
                   x2="{c.margin_left + plot_width}" y2="{y_axis - 10}"
                   class="axis-line"/>
-        ''']
+        '''
+        ]
 
         # Tick marks and labels
         if c.log_scale:
@@ -400,8 +408,8 @@ class ForestPlotGenerator:
 
     def _calculate_x_range(
         self,
-        studies: List[StudyData],
-        pooled: Optional[PooledEstimate],
+        studies: list[StudyData],
+        pooled: PooledEstimate | None,
     ) -> tuple[float, float]:
         """Calculate x-axis range from data."""
         c = self.config
@@ -422,7 +430,7 @@ class ForestPlotGenerator:
             log_values = [math.log10(v) for v in values]
             log_min = min(log_values) - 0.1
             log_max = max(log_values) + 0.1
-            return 10 ** log_min, 10 ** log_max
+            return 10**log_min, 10**log_max
         else:
             val_min = min(values)
             val_max = max(values)
@@ -465,9 +473,9 @@ class ForestPlotGenerator:
 
 
 def generate_forest_plot_from_claims(
-    claims: List[dict],
+    claims: list[dict[str, Any]],
     title: str = "Forest Plot",
-    config: Optional[ForestPlotConfig] = None,
+    config: ForestPlotConfig | None = None,
 ) -> str:
     """
     Generate forest plot from claim data.
@@ -483,7 +491,7 @@ def generate_forest_plot_from_claims(
     generator = ForestPlotGenerator(config)
 
     # Convert claims to StudyData
-    studies = []
+    studies: list[StudyData] = []
     pooled = None
 
     for claim in claims:
@@ -501,14 +509,18 @@ def generate_forest_plot_from_claims(
             )
         else:
             # Individual study
-            studies.append(StudyData(
-                study_id=claim.get("claim_id", f"study_{len(studies)}"),
-                study_label=claim.get("study_label", claim.get("claim_id", f"Study {len(studies) + 1}")),
-                effect_size=claim["value"],
-                lower_ci=claim.get("lower_bound", claim["value"]),
-                upper_ci=claim.get("upper_bound", claim["value"]),
-                weight=claim.get("weight", 0),
-                n_total=claim.get("sample_size"),
-            ))
+            studies.append(
+                StudyData(
+                    study_id=claim.get("claim_id", f"study_{len(studies)}"),
+                    study_label=claim.get(
+                        "study_label", claim.get("claim_id", f"Study {len(studies) + 1}")
+                    ),
+                    effect_size=claim["value"],
+                    lower_ci=claim.get("lower_bound", claim["value"]),
+                    upper_ci=claim.get("upper_bound", claim["value"]),
+                    weight=claim.get("weight", 0),
+                    n_total=claim.get("sample_size"),
+                )
+            )
 
     return generator.generate(studies, pooled, title)

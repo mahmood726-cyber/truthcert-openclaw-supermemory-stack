@@ -2,10 +2,10 @@
 Unit/timepoint drift validator - detects unit and temporal inconsistencies.
 """
 
-from typing import Any, Optional
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Any, ClassVar
 
-from ..constants import Severity, CertificationProfile
+from ..constants import CertificationProfile, Severity
 from ..models import NumericClaim, ScopeLock, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
@@ -31,8 +31,23 @@ class UnitDriftValidator(Validator):
     default_severity = Severity.WARN
 
     # Common unit families for consistency checking
-    UNIT_FAMILIES = {
-        "time": ["seconds", "minutes", "hours", "days", "weeks", "months", "years", "s", "min", "h", "d", "w", "mo", "y"],
+    UNIT_FAMILIES: ClassVar[dict[str, list[str]]] = {
+        "time": [
+            "seconds",
+            "minutes",
+            "hours",
+            "days",
+            "weeks",
+            "months",
+            "years",
+            "s",
+            "min",
+            "h",
+            "d",
+            "w",
+            "mo",
+            "y",
+        ],
         "proportion": ["percent", "%", "proportion", "ratio", "fraction"],
         "count": ["n", "count", "number", "participants", "subjects", "patients"],
         "effect": ["d", "g", "r", "rr", "or", "hr", "smd", "md"],
@@ -45,8 +60,8 @@ class UnitDriftValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate for unit and timepoint drift."""
-        issues = []
-        warnings = []
+        issues: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Group claims by type for consistency checking
         claims_by_type: dict[str, list[NumericClaim]] = {}
@@ -65,15 +80,17 @@ class UnitDriftValidator(Validator):
 
             # Check for mixed units in same family
             if len(units) > 1:
-                family = self._get_unit_family(list(units)[0])
+                family = self._get_unit_family(next(iter(units)))
                 if family:
                     mixed_in_family = [u for u in units if u in self.UNIT_FAMILIES.get(family, [])]
                     if len(mixed_in_family) > 1:
-                        issues.append({
-                            "claim_type": claim_type,
-                            "issue": f"Mixed units in {family} family",
-                            "units_found": list(units),
-                        })
+                        issues.append(
+                            {
+                                "claim_type": claim_type,
+                                "issue": f"Mixed units in {family} family",
+                                "units_found": list(units),
+                            }
+                        )
 
         # Check for temporal drift (evidence age)
         max_age_days = self.config.params.get("max_evidence_age_days", 365 * 2)  # 2 years default
@@ -86,19 +103,20 @@ class UnitDriftValidator(Validator):
                         # Handle timezone-aware vs naive
                         extracted = evidence.extracted_at
                         if extracted.tzinfo:
-                            from datetime import timezone
-                            now_aware = datetime.now(timezone.utc)
+                            now_aware = datetime.now(UTC)
                             age_days = (now_aware - extracted).days
                         else:
                             age_days = (now - extracted).days
 
                         if age_days > max_age_days:
-                            warnings.append({
-                                "claim_id": claim.claim_id,
-                                "issue": f"Evidence is {age_days} days old (max: {max_age_days})",
-                                "evidence_uri": evidence.uri,
-                                "extracted_at": evidence.extracted_at.isoformat(),
-                            })
+                            warnings.append(
+                                {
+                                    "claim_id": claim.claim_id,
+                                    "issue": f"Evidence is {age_days} days old (max: {max_age_days})",
+                                    "evidence_uri": evidence.uri,
+                                    "extracted_at": evidence.extracted_at.isoformat(),
+                                }
+                            )
                     except (TypeError, ValueError):
                         pass
 
@@ -107,12 +125,14 @@ class UnitDriftValidator(Validator):
             if claim.unit and claim.value:
                 error = self._check_conversion_error(claim)
                 if error:
-                    issues.append({
-                        "claim_id": claim.claim_id,
-                        "issue": error,
-                        "value": claim.value,
-                        "unit": claim.unit,
-                    })
+                    issues.append(
+                        {
+                            "claim_id": claim.claim_id,
+                            "issue": error,
+                            "value": claim.value,
+                            "unit": claim.unit,
+                        }
+                    )
 
         # Determine severity based on profile
         severity = self._get_severity_for_profile(scope_lock.profile)
@@ -136,7 +156,7 @@ class UnitDriftValidator(Validator):
             },
         )
 
-    def _get_unit_family(self, unit: str) -> Optional[str]:
+    def _get_unit_family(self, unit: str) -> str | None:
         """Get the family name for a unit."""
         unit_lower = unit.lower()
         for family, units in self.UNIT_FAMILIES.items():
@@ -144,19 +164,17 @@ class UnitDriftValidator(Validator):
                 return family
         return None
 
-    def _check_conversion_error(self, claim: NumericClaim) -> Optional[str]:
+    def _check_conversion_error(self, claim: NumericClaim) -> str | None:
         """Check for obvious unit conversion errors."""
         unit = claim.unit.lower() if claim.unit else ""
         value = claim.value
 
         # Proportion checks
-        if unit in ["percent", "%"]:
-            if value < 0 or value > 100:
-                return f"Percentage value {value} outside valid range [0, 100]"
+        if unit in ["percent", "%"] and (value < 0 or value > 100):
+            return f"Percentage value {value} outside valid range [0, 100]"
 
-        if unit in ["proportion", "ratio", "fraction"]:
-            if value < 0 or value > 1:
-                return f"Proportion value {value} outside valid range [0, 1]"
+        if unit in ["proportion", "ratio", "fraction"] and (value < 0 or value > 1):
+            return f"Proportion value {value} outside valid range [0, 1]"
 
         # Count checks
         if unit in ["n", "count", "number", "participants"]:

@@ -8,35 +8,39 @@ This script demonstrates how to:
 4. Get certified bundle
 """
 
-import sys
-import os
 import hashlib
-from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional
+import os
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from certifier.signing import generate_keypair
-from certifier.models import (
-    NumericClaim, ClaimType, EvidenceLocator, EvidenceType,
-    ScopeLock, CertificationProfile, ValidationSummary
-)
-from certifier.validators import ValidatorRegistry
 from certifier.bundle import create_bundle
 from certifier.constants import Severity
+from certifier.models import (
+    CertificationProfile,
+    ClaimType,
+    EvidenceLocator,
+    EvidenceType,
+    NumericClaim,
+    ScopeLock,
+    ValidationSummary,
+)
+from certifier.signing import generate_keypair
+from certifier.validators import ValidatorRegistry
 
 
 @dataclass
 class ExtractedNumber:
     """Represents a number extracted from a PDF."""
+
     value: float
     claim_type: str
-    unit: Optional[str] = None
-    lower_bound: Optional[float] = None
-    upper_bound: Optional[float] = None
-    standard_error: Optional[float] = None
+    unit: str | None = None
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+    standard_error: float | None = None
     page: int = 1
     section: str = ""
     context: str = ""
@@ -65,7 +69,7 @@ def extract_from_pdf(pdf_path: str):
             standard_error=0.12,
             page=7,
             section="Results",
-            context="The pooled risk ratio was 0.73 (95% CI: 0.58-0.92)"
+            context="The pooled risk ratio was 0.73 (95% CI: 0.58-0.92)",
         ),
         ExtractedNumber(
             value=52.3,
@@ -75,14 +79,14 @@ def extract_from_pdf(pdf_path: str):
             upper_bound=72.1,
             page=8,
             section="Heterogeneity",
-            context="I² = 52.3% (95% CI: 18.5-72.1%)"
+            context="I² = 52.3% (95% CI: 18.5-72.1%)",
         ),
         ExtractedNumber(
             value=8542,
             claim_type="sample_size",
             page=5,
             section="Methods",
-            context="Total participants: 8,542"
+            context="Total participants: 8,542",
         ),
     ]
     return extractions, content_hash
@@ -184,7 +188,7 @@ def main():
     print("\n[3] Running certification pipeline...")
     outcome, receipt, bundle_path = certify_claims(claims)
 
-    print(f"\n[4] Results:")
+    print("\n[4] Results:")
     print(f"    Outcome: {outcome}")
     print(f"    Bundle ID: {receipt.get('bundle_id', 'N/A')[:50]}...")
     print(f"    Bundle path: {bundle_path}")

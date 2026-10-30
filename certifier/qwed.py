@@ -16,19 +16,19 @@ References:
 """
 
 import ast
-import operator
-import re
 import math
-from typing import Any, Optional, Union
-from dataclasses import dataclass
+import operator
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any, ClassVar
 
-from .models import NumericClaim, ClaimType
-
+from .models import ClaimType, NumericClaim
 
 # =============================================================================
 # Statistical Distribution Helper Functions
 # =============================================================================
+
 
 def _t_ppf(p: float, df: float) -> float:
     """
@@ -91,7 +91,7 @@ def _t_ppf(p: float, df: float) -> float:
     return t_val
 
 
-def _get_critical_value(confidence: float, df: Optional[int] = None, use_t: bool = False) -> float:
+def _get_critical_value(confidence: float, df: int | None = None, use_t: bool = False) -> float:
     """
     Get the critical value for a two-tailed confidence interval.
 
@@ -142,6 +142,7 @@ def _get_critical_value(confidence: float, df: Optional[int] = None, use_t: bool
 
 class VerificationStatus(str, Enum):
     """Status of deterministic verification."""
+
     VERIFIED = "verified"
     FAILED = "failed"
     SKIPPED = "skipped"
@@ -151,18 +152,15 @@ class VerificationStatus(str, Enum):
 @dataclass
 class VerificationResult:
     """Result of a QWED verification check."""
+
     status: VerificationStatus
     message: str
     claim_id: str
     check_type: str
-    expected: Optional[Any] = None
-    actual: Optional[Any] = None
-    tolerance: Optional[float] = None
-    details: dict = None
-
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
+    expected: Any | None = None
+    actual: Any | None = None
+    tolerance: float | None = None
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 class QWEDVerifier:
@@ -179,7 +177,7 @@ class QWEDVerifier:
     TOLERANCE_RELAXED = 1e-4
     TOLERANCE_STATISTICAL = 0.01  # 1% for statistical calculations
 
-    def __init__(self, tolerance: float = None):
+    def __init__(self, tolerance: float | None = None) -> None:
         self.tolerance = tolerance or self.TOLERANCE_STATISTICAL
 
     def verify_claim(self, claim: NumericClaim) -> list[VerificationResult]:
@@ -237,6 +235,9 @@ class QWEDVerifier:
         upper = claim.upper_bound
         value = claim.value
 
+        if lower is None or upper is None:
+            raise ValueError("CI bounds are required")
+
         # Check ordering
         if lower > upper:
             return VerificationResult(
@@ -289,6 +290,9 @@ class QWEDVerifier:
         lower = claim.lower_bound
         upper = claim.upper_bound
         confidence = claim.confidence_level or 0.95
+
+        if lower is None or upper is None or se is None:
+            raise ValueError("CI bounds and standard error are required")
 
         # Determine critical value (z or t)
         distribution_used = "normal"
@@ -392,6 +396,9 @@ class QWEDVerifier:
         lower = claim.lower_bound
         upper = claim.upper_bound
         confidence = claim.confidence_level or 0.95
+
+        if lower is None or upper is None:
+            raise ValueError("CI bounds are required")
 
         # Get z-value for confidence level
         z = _get_critical_value(confidence, use_t=False)
@@ -612,7 +619,7 @@ class QWEDVerifier:
         Q = sum(w * (y - pooled_fe) ** 2 for w, y in zip(fe_weights, effects))
 
         # Step 3: Estimate tau-squared using DerSimonian-Laird formula
-        C = sum_fe_weights - sum(w ** 2 for w in fe_weights) / sum_fe_weights
+        C = sum_fe_weights - sum(w**2 for w in fe_weights) / sum_fe_weights
         tau_squared = max(0, (Q - (k - 1)) / C) if C > 0 else 0
 
         # Step 4: Calculate random-effects weights (adjusted by tau-squared)
@@ -724,7 +731,14 @@ class QWEDVerifier:
         if pi_lower is None or pi_upper is None:
             missing.append("PI bounds (lower_bound/upper_bound)")
 
-        if missing:
+        if (
+            pooled is None
+            or tau_squared is None
+            or se_pooled is None
+            or n_studies is None
+            or pi_lower is None
+            or pi_upper is None
+        ):
             return VerificationResult(
                 status=VerificationStatus.ERROR,
                 message=f"Missing required data for PI verification: {', '.join(missing)}",
@@ -747,7 +761,7 @@ class QWEDVerifier:
         t_crit = _get_critical_value(confidence, df=df, use_t=True)
 
         # PI width calculation
-        pi_se = math.sqrt(tau_squared + se_pooled ** 2)
+        pi_se = math.sqrt(tau_squared + se_pooled**2)
         expected_pi_lower = pooled - t_crit * pi_se
         expected_pi_upper = pooled + t_crit * pi_se
 
@@ -756,7 +770,9 @@ class QWEDVerifier:
 
         # Check 1: PI must contain pooled estimate
         if not (pi_lower <= pooled <= pi_upper):
-            errors.append(f"PI [{pi_lower:.4f}, {pi_upper:.4f}] does not contain pooled estimate {pooled:.4f}")
+            errors.append(
+                f"PI [{pi_lower:.4f}, {pi_upper:.4f}] does not contain pooled estimate {pooled:.4f}"
+            )
 
         # Check 2: PI bounds should be correctly ordered
         if pi_lower > pi_upper:
@@ -778,9 +794,7 @@ class QWEDVerifier:
             ci_width = ci_upper - ci_lower
             pi_width = pi_upper - pi_lower
             if pi_width < ci_width - self.TOLERANCE_RELAXED:
-                errors.append(
-                    f"PI width ({pi_width:.4f}) should be >= CI width ({ci_width:.4f})"
-                )
+                errors.append(f"PI width ({pi_width:.4f}) should be >= CI width ({ci_width:.4f})")
 
         if errors:
             return VerificationResult(
@@ -826,7 +840,10 @@ class QWEDVerifier:
         variance = claim.variance
         se = claim.standard_error
 
-        expected_variance = se ** 2
+        if variance is None or se is None:
+            raise ValueError("Variance and standard error are required")
+
+        expected_variance = se**2
         diff = abs(variance - expected_variance)
 
         rel_tol = max(expected_variance * self.tolerance, self.TOLERANCE_NORMAL)
@@ -870,7 +887,7 @@ class SafeExpressionEvaluator:
     """
 
     # Allowed binary operators
-    BINARY_OPS = {
+    BINARY_OPS: ClassVar[dict[type[ast.operator], Callable[[float, float], float]]] = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
         ast.Mult: operator.mul,
@@ -881,24 +898,24 @@ class SafeExpressionEvaluator:
     }
 
     # Allowed unary operators
-    UNARY_OPS = {
+    UNARY_OPS: ClassVar[dict[type[ast.unaryop], Callable[[float], float]]] = {
         ast.UAdd: operator.pos,
         ast.USub: operator.neg,
     }
 
     # Allowed safe functions
-    SAFE_FUNCTIONS = {
-        'sqrt': math.sqrt,
-        'log': math.log,
-        'exp': math.exp,
-        'abs': abs,
-        'pow': pow,
-        'sin': math.sin,
-        'cos': math.cos,
-        'tan': math.tan,
+    SAFE_FUNCTIONS: ClassVar[dict[str, Callable[..., float]]] = {
+        "sqrt": math.sqrt,
+        "log": math.log,
+        "exp": math.exp,
+        "abs": abs,
+        "pow": pow,
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
     }
 
-    def __init__(self, variables: dict[str, float] = None):
+    def __init__(self, variables: dict[str, float] | None = None) -> None:
         """
         Initialize the evaluator with variable bindings.
 
@@ -922,7 +939,7 @@ class SafeExpressionEvaluator:
             SyntaxError: If expression is not valid Python syntax
         """
         try:
-            tree = ast.parse(expression, mode='eval')
+            tree = ast.parse(expression, mode="eval")
         except SyntaxError as e:
             raise ValueError(f"Invalid expression syntax: {e}")
 
@@ -936,10 +953,6 @@ class SafeExpressionEvaluator:
             if isinstance(node.value, (int, float)):
                 return float(node.value)
             raise ValueError(f"Only numeric constants allowed, got: {type(node.value).__name__}")
-
-        # Legacy Num node (Python < 3.8 compatibility)
-        if isinstance(node, ast.Num):
-            return float(node.n)
 
         # Variable references
         if isinstance(node, ast.Name):
@@ -963,17 +976,17 @@ class SafeExpressionEvaluator:
 
         # Unary operations
         if isinstance(node, ast.UnaryOp):
-            op_type = type(node.op)
-            if op_type not in self.UNARY_OPS:
-                raise ValueError(f"Disallowed unary operator: {op_type.__name__}")
+            unary_type = type(node.op)
+            if unary_type not in self.UNARY_OPS:
+                raise ValueError(f"Disallowed unary operator: {unary_type.__name__}")
             operand = self._eval_node(node.operand)
-            return self.UNARY_OPS[op_type](operand)
+            return self.UNARY_OPS[unary_type](operand)
 
         # Function calls (only allowed functions)
         if isinstance(node, ast.Call):
             # Must be a simple name call (not attribute access)
             if not isinstance(node.func, ast.Name):
-                raise ValueError("Only simple function calls allowed (no method calls)")
+                raise ValueError("Only simple function calls allowed (no method calls)")  # noqa: TRY004 -- public syntax-rejection API uses ValueError
 
             func_name = node.func.id
             if func_name not in self.SAFE_FUNCTIONS:
@@ -1017,7 +1030,7 @@ class SafeExpressionEvaluator:
 
         for node_type, description in disallowed:
             if isinstance(node, node_type):
-                raise ValueError(f"Disallowed construct: {description}")
+                raise ValueError(f"Disallowed construct: {description}")  # noqa: TRY004 -- public syntax-rejection API uses ValueError
 
         raise ValueError(f"Unsupported expression type: {type(node).__name__}")
 
@@ -1081,14 +1094,14 @@ def verify_formula(
         # Security rejection or invalid expression
         return VerificationResult(
             status=VerificationStatus.ERROR,
-            message=f"Formula rejected: {str(e)}",
+            message=f"Formula rejected: {e!s}",
             claim_id="formula",
             check_type="formula_verification",
         )
-    except Exception as e:
+    except (ArithmeticError, TypeError) as e:
         return VerificationResult(
             status=VerificationStatus.ERROR,
-            message=f"Formula evaluation error: {str(e)}",
+            message=f"Formula evaluation error: {e!s}",
             claim_id="formula",
             check_type="formula_verification",
         )
@@ -1110,7 +1123,7 @@ def verify_all_claims(claims: list[NumericClaim]) -> list[VerificationResult]:
     return all_results
 
 
-def get_verification_summary(results: list[VerificationResult]) -> dict:
+def get_verification_summary(results: list[VerificationResult]) -> dict[str, Any]:
     """
     Get summary statistics from verification results.
     """

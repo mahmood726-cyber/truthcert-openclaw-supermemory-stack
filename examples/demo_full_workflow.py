@@ -9,24 +9,28 @@ This script demonstrates the complete certification workflow:
 5. Render proof-carrying numbers
 """
 
-import sys
-import os
 import hashlib
+import os
+import sys
 from pathlib import Path
-from datetime import datetime, timezone
 
 # Add parent to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from certifier.signing import generate_keypair, save_keypair
-from certifier.models import (
-    NumericClaim, ClaimType, EvidenceLocator, EvidenceType,
-    ScopeLock, CertificationProfile, ValidationSummary
-)
-from certifier.validators import ValidatorRegistry
 from certifier.bundle import create_bundle, load_bundle
-from certifier.qwed import QWEDVerifier, get_verification_summary
 from certifier.constants import Severity
+from certifier.models import (
+    CertificationProfile,
+    ClaimType,
+    EvidenceLocator,
+    EvidenceType,
+    NumericClaim,
+    ScopeLock,
+    ValidationSummary,
+)
+from certifier.qwed import QWEDVerifier, get_verification_summary
+from certifier.signing import generate_keypair
+from certifier.validators import ValidatorRegistry
 
 
 def compute_content_hash(content: str) -> str:
@@ -76,9 +80,35 @@ def main():
                 )
             ],
             metadata={
-                "study_effects": [0.8, 0.9, 0.75, 0.88, 0.92, 0.78, 0.85, 0.82, 0.91, 0.79, 0.87, 0.83],
-                "study_weights": [0.1, 0.08, 0.12, 0.09, 0.07, 0.11, 0.08, 0.09, 0.08, 0.07, 0.06, 0.05],
-            }
+                "study_effects": [
+                    0.8,
+                    0.9,
+                    0.75,
+                    0.88,
+                    0.92,
+                    0.78,
+                    0.85,
+                    0.82,
+                    0.91,
+                    0.79,
+                    0.87,
+                    0.83,
+                ],
+                "study_weights": [
+                    0.1,
+                    0.08,
+                    0.12,
+                    0.09,
+                    0.07,
+                    0.11,
+                    0.08,
+                    0.09,
+                    0.08,
+                    0.07,
+                    0.06,
+                    0.05,
+                ],
+            },
         ),
         # Heterogeneity
         NumericClaim(

@@ -2,24 +2,15 @@
 Tests for FastAPI endpoints.
 """
 
+import json
 import os
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+
+import pytest
 from fastapi.testclient import TestClient
 
 from certifier.main import app
-from certifier.models import (
-    NumericClaim,
-    EvidenceLocator,
-    EvidenceType,
-    ClaimType,
-    ScopeLock,
-    CertificationProfile,
-)
-from certifier.constants import BundleOutcome, Severity
-
 
 # Get the project root directory (where policies folder is located)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -41,6 +32,7 @@ def client(temp_dir, monkeypatch, signing_keys):
 
     # Disable rate limiting for tests by setting enabled=False on the limiter
     from certifier.main import limiter
+
     limiter.enabled = False
 
     return TestClient(app)
@@ -63,7 +55,7 @@ def valid_claim_data(sample_evidence):
                 "source_type": "oa_document",
                 "uri": "https://example.com/paper.pdf",
                 "content_hash": "sha256:abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234",
-                "extracted_at": datetime.now(timezone.utc).isoformat(),
+                "extracted_at": datetime.now(UTC).isoformat(),
                 "page": 5,
                 "section": "Results",
             }
@@ -84,7 +76,7 @@ def memory_leak_claim_data():
                 "source_type": "oa_document",
                 "uri": "memory:recall-123",  # Memory URI triggers leak
                 "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-                "extracted_at": datetime.now(timezone.utc).isoformat(),
+                "extracted_at": datetime.now(UTC).isoformat(),
             }
         ],
     }
@@ -128,8 +120,8 @@ class TestHealthEndpoint:
         response = client.get("/health")
         data = response.json()
 
-        timestamp = datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))
-        now = datetime.now(timezone.utc)
+        timestamp = datetime.fromisoformat(data["timestamp"])
+        now = datetime.now(UTC)
         diff = abs((now - timestamp).total_seconds())
 
         assert diff < 60  # Within 1 minute
@@ -158,7 +150,9 @@ class TestCertifyEndpoint:
         assert "validation_summary" in data
         assert data["bundle_id"].startswith("sha256:")
 
-    def test_certify_memory_leak_claim_rejected(self, client, memory_leak_claim_data, default_scope_lock, signing_keys):
+    def test_certify_memory_leak_claim_rejected(
+        self, client, memory_leak_claim_data, default_scope_lock, signing_keys
+    ):
         """Test that claims citing memory are rejected."""
         response = client.post(
             f"{API_V1}/certify",
@@ -209,7 +203,9 @@ class TestCertifyEndpoint:
         # Pydantic validation should fail for no evidence
         assert response.status_code == 422
 
-    def test_certify_invalid_policy_returns_404(self, client, valid_claim_data, default_scope_lock, signing_keys):
+    def test_certify_invalid_policy_returns_404(
+        self, client, valid_claim_data, default_scope_lock, signing_keys
+    ):
         """Test that invalid policy ID returns 404."""
         scope_lock = default_scope_lock.copy()
         scope_lock["policy_id"] = "nonexistent_policy"
@@ -224,7 +220,9 @@ class TestCertifyEndpoint:
 
         assert response.status_code == 404
 
-    def test_certify_too_many_claims_rejected(self, client, valid_claim_data, default_scope_lock, signing_keys, monkeypatch):
+    def test_certify_too_many_claims_rejected(
+        self, client, valid_claim_data, default_scope_lock, signing_keys, monkeypatch
+    ):
         """Test that exceeding max claims is rejected."""
         # Set very low max claims
         monkeypatch.setenv("TRUTHCERT_MAX_CLAIMS", "1")
@@ -261,7 +259,9 @@ class TestCertifyEndpoint:
 
         assert response.status_code == 200
 
-    def test_certify_response_has_receipt_on_pass(self, client, valid_claim_data, default_scope_lock, signing_keys):
+    def test_certify_response_has_receipt_on_pass(
+        self, client, valid_claim_data, default_scope_lock, signing_keys
+    ):
         """Test that PASS outcome includes receipt."""
         response = client.post(
             f"{API_V1}/certify",
@@ -304,7 +304,9 @@ class TestVerifyEndpoint:
 
         assert response.status_code == 400
 
-    def test_verify_existing_bundle(self, client, valid_claim_data, default_scope_lock, signing_keys):
+    def test_verify_existing_bundle(
+        self, client, valid_claim_data, default_scope_lock, signing_keys
+    ):
         """Test verifying an existing bundle."""
         # First create a bundle
         certify_response = client.post(
@@ -334,7 +336,9 @@ class TestVerifyEndpoint:
         assert "valid" in data
         assert data["bundle_id"] == bundle_id
 
-    def test_verify_response_structure(self, client, valid_claim_data, default_scope_lock, signing_keys):
+    def test_verify_response_structure(
+        self, client, valid_claim_data, default_scope_lock, signing_keys
+    ):
         """Test verify response has expected structure."""
         # Create bundle first
         certify_response = client.post(
@@ -363,6 +367,49 @@ class TestVerifyEndpoint:
         assert "errors" in data
         assert "warnings" in data
 
+    @pytest.mark.parametrize(
+        ("check_signature", "check_scope_lock"),
+        [(False, False), (False, True), (True, False)],
+    )
+    def test_skipped_integrity_checks_never_report_valid(
+        self,
+        client,
+        valid_claim_data,
+        default_scope_lock,
+        signing_keys,
+        check_signature,
+        check_scope_lock,
+    ):
+        """A syntactically valid real bundle is not certified by skipped controls."""
+        certified = client.post(
+            f"{API_V1}/certify",
+            json={
+                "claims": [valid_claim_data],
+                "policy_id": "bronze",
+                "scope_lock": default_scope_lock,
+            },
+        )
+        assert certified.status_code == 200
+        bundle_id = certified.json()["bundle_id"]
+        response = client.post(
+            f"{API_V1}/verify",
+            json={
+                "bundle_id": bundle_id,
+                "check_signature": check_signature,
+                "check_scope_lock": check_scope_lock,
+            },
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert result["schema_valid"] is True
+        assert result["valid"] is False
+        if not check_signature:
+            assert result["signature_valid"] is None
+            assert "NONCERTIFYING: signature verification skipped" in result["warnings"]
+        if not check_scope_lock:
+            assert result["scope_lock_valid"] is None
+            assert "NONCERTIFYING: scope lock verification skipped" in result["warnings"]
+
 
 class TestBundlesEndpoint:
     """Test /api/v1/bundles endpoints."""
@@ -379,7 +426,9 @@ class TestBundlesEndpoint:
         assert "limit" in data
         assert "offset" in data
 
-    def test_list_bundles_with_pagination(self, client, valid_claim_data, default_scope_lock, signing_keys):
+    def test_list_bundles_with_pagination(
+        self, client, valid_claim_data, default_scope_lock, signing_keys
+    ):
         """Test listing bundles with pagination."""
         # Create a few bundles
         for i in range(3):
@@ -514,7 +563,9 @@ class TestJobsEndpoint:
 class TestErrorResponses:
     """Test error response formats."""
 
-    def test_400_error_format(self, client, valid_claim_data, default_scope_lock, signing_keys, monkeypatch):
+    def test_400_error_format(
+        self, client, valid_claim_data, default_scope_lock, signing_keys, monkeypatch
+    ):
         """Test 400 error response format."""
         monkeypatch.setenv("TRUTHCERT_MAX_CLAIMS", "1")
 
@@ -587,3 +638,37 @@ class TestContentTypeHandling:
         response = client.get("/health")
 
         assert "application/json" in response.headers.get("content-type", "")
+
+
+def test_verify_api_refuses_modified_signed_claim_payload(
+    client,
+    valid_claim_data,
+    default_scope_lock,
+    signing_keys,
+):
+    """A still-valid signed manifest must not authenticate altered CI bounds."""
+    created = client.post(
+        f"{API_V1}/certify",
+        json={
+            "claims": [valid_claim_data],
+            "policy_id": "bronze",
+            "scope_lock": default_scope_lock,
+        },
+    )
+    assert created.status_code == 200, created.text
+    bundle_id = created.json()["bundle_id"]
+    before = client.post(f"{API_V1}/verify", json={"bundle_id": bundle_id})
+    assert before.status_code == 200 and before.json()["valid"] is True, before.text
+
+    bundle_path = Path(os.environ["TRUTHCERT_BUNDLE_DIR"]) / (
+        "bundle_" + bundle_id.removeprefix("sha256:")[:16]
+    )
+    claims_path = bundle_path / "claims.jsonl"
+    original = json.loads(claims_path.read_text(encoding="utf-8").strip())
+    original["lower_bound"] = -100
+    claims_path.write_text(json.dumps(original) + "\n", encoding="utf-8")
+
+    result = client.post(f"{API_V1}/verify", json={"bundle_id": bundle_id})
+    assert result.status_code == 200
+    assert result.json()["valid"] is False
+    assert "Signed claims payload digest mismatch" in result.json()["errors"]

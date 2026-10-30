@@ -10,20 +10,25 @@ Demonstrates certification of NMA-specific claims:
 - Effective sample size (ESS)
 """
 
-import sys
 import os
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from certifier.signing import generate_keypair
-from certifier.models import (
-    NumericClaim, ClaimType, EvidenceLocator, EvidenceType,
-    ScopeLock, CertificationProfile, ValidationSummary
-)
-from certifier.validators import ValidatorRegistry, NMAValidator, PRISMANMAValidator
 from certifier.bundle import create_bundle
 from certifier.constants import Severity
+from certifier.models import (
+    CertificationProfile,
+    ClaimType,
+    EvidenceLocator,
+    EvidenceType,
+    NumericClaim,
+    ScopeLock,
+    ValidationSummary,
+)
+from certifier.signing import generate_keypair
+from certifier.validators import NMAValidator, PRISMANMAValidator, ValidatorRegistry
 
 
 def main():
@@ -38,13 +43,15 @@ def main():
     os.environ["TRUTHCERT_PUBLIC_KEY"] = public_b64
 
     # Create evidence locator
-    evidence = [EvidenceLocator(
-        source_type=EvidenceType.OA_DOCUMENT,
-        uri="doi:10.1002/nma.2024.001",
-        content_hash="sha256:" + "b" * 64,
-        page=12,
-        section="Results - Network Meta-Analysis",
-    )]
+    evidence = [
+        EvidenceLocator(
+            source_type=EvidenceType.OA_DOCUMENT,
+            uri="doi:10.1002/nma.2024.001",
+            content_hash="sha256:" + "b" * 64,
+            page=12,
+            section="Results - Network Meta-Analysis",
+        )
+    ]
 
     # Create NMA claims
     print("\n[2] Creating NMA claims...")
@@ -57,7 +64,7 @@ def main():
             value=85.5,
             unit="%",
             evidence=evidence,
-            metadata={"treatment": "Drug A", "n_treatments": 5}
+            metadata={"treatment": "Drug A", "n_treatments": 5},
         ),
         NumericClaim(
             claim_id="sucra-drug-b",
@@ -65,7 +72,7 @@ def main():
             value=62.3,
             unit="%",
             evidence=evidence,
-            metadata={"treatment": "Drug B", "n_treatments": 5}
+            metadata={"treatment": "Drug B", "n_treatments": 5},
         ),
         NumericClaim(
             claim_id="sucra-drug-c",
@@ -73,7 +80,7 @@ def main():
             value=45.1,
             unit="%",
             evidence=evidence,
-            metadata={"treatment": "Drug C", "n_treatments": 5}
+            metadata={"treatment": "Drug C", "n_treatments": 5},
         ),
         NumericClaim(
             claim_id="sucra-placebo",
@@ -81,36 +88,32 @@ def main():
             value=15.8,
             unit="%",
             evidence=evidence,
-            metadata={"treatment": "Placebo", "n_treatments": 5}
+            metadata={"treatment": "Placebo", "n_treatments": 5},
         ),
-
         # P-scores
         NumericClaim(
             claim_id="pscore-drug-a",
             claim_type=ClaimType.NMA_P_SCORE,
             value=0.88,
             evidence=evidence,
-            metadata={"treatment": "Drug A"}
+            metadata={"treatment": "Drug A"},
         ),
-
         # Mean ranks
         NumericClaim(
             claim_id="mean-rank-a",
             claim_type=ClaimType.NMA_MEAN_RANK,
             value=1.5,
             evidence=evidence,
-            metadata={"treatment": "Drug A", "n_treatments": 5}
+            metadata={"treatment": "Drug A", "n_treatments": 5},
         ),
-
         # Bayesian convergence diagnostics
         NumericClaim(
             claim_id="psrf-001",
             claim_type=ClaimType.NMA_PSRF,
             value=1.02,  # Good convergence (< 1.05)
             evidence=evidence,
-            metadata={"parameter": "d[2]"}
+            metadata={"parameter": "d[2]"},
         ),
-
         # Effective sample size
         NumericClaim(
             claim_id="ess-001",
@@ -118,7 +121,6 @@ def main():
             value=5000,  # Good ESS (> 1000)
             evidence=evidence,
         ),
-
         # Relative effect (Drug A vs Placebo)
         NumericClaim(
             claim_id="nma-effect-a-placebo",
@@ -131,7 +133,7 @@ def main():
             metadata={
                 "comparison": "Drug A vs Placebo",
                 "effect_measure": "odds_ratio",
-            }
+            },
         ),
     ]
 
@@ -153,7 +155,7 @@ def main():
                 "inconsistency_assessed": "Node-splitting method",
                 "ranking_methods_described": "SUCRA and P-scores",
             }
-        }
+        },
     )
 
     # Run NMA-specific validator
@@ -207,10 +209,10 @@ def main():
 
     outcome = "PASS" if summary.all_passed else "REJECT"
 
-    print(f"\n[8] Results:")
+    print("\n[8] Results:")
     print(f"    Outcome: {outcome}")
     print(f"    Bundle ID: {receipt.get('bundle_id', 'N/A')[:50]}...")
-    print(f"    Profile: GOLD")
+    print("    Profile: GOLD")
     print(f"    Bundle path: {bundle_path}")
 
     print("\n" + "=" * 50)

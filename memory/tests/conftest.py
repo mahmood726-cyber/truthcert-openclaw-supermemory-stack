@@ -5,10 +5,12 @@ because pytest only loads conftest files along the collected test's path.
 This provides the ``temp_dir`` fixture those tests depend on.
 """
 
+from pathlib import Path
+
 import pytest
 
 
 @pytest.fixture
-def temp_dir(tmp_path_factory):
+def temp_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create an isolated temporary directory for a single test."""
     return tmp_path_factory.mktemp("memory-test")

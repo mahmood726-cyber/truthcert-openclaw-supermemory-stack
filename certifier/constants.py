@@ -38,7 +38,7 @@ DEFAULT_MAX_REQUEST_MB: Final[int] = 50
 DEFAULT_RATE_LIMIT_CERTIFY: Final[str] = "10/minute"
 DEFAULT_RATE_LIMIT_VERIFY: Final[str] = "60/minute"
 DEFAULT_RATE_LIMIT_DEFAULT: Final[str] = "100/minute"
-DEFAULT_HOST: Final[str] = "0.0.0.0"
+DEFAULT_HOST: Final[str] = "127.0.0.1"  # Local-only unless TRUTHCERT_HOST is explicit
 DEFAULT_PORT: Final[int] = 8000
 DEFAULT_DB_PATH: Final[str] = "./truthcert.db"
 DEFAULT_POLICY_CACHE_TTL: Final[int] = 300  # 5 minutes
@@ -72,6 +72,7 @@ ATTEST_DIR: Final[str] = "attest"
 
 class CertificationProfile(str, Enum):
     """Certification assurance levels."""
+
     BRONZE = "BRONZE"
     SILVER = "SILVER"
     GOLD = "GOLD"
@@ -84,6 +85,7 @@ class CertificationProfile(str, Enum):
 
 class Severity(str, Enum):
     """Validator result severity levels."""
+
     INFO = "INFO"
     WARN = "WARN"
     BLOCK = "BLOCK"
@@ -96,6 +98,7 @@ class Severity(str, Enum):
 
 class BundleOutcome(str, Enum):
     """Certification outcomes."""
+
     PASS = "PASS"
     REJECT = "REJECT"
 

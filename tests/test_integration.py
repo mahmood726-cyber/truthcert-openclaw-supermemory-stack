@@ -9,30 +9,24 @@ Tests end-to-end workflows:
 - NMA claim certification
 """
 
-import pytest
-import json
-import tempfile
-from pathlib import Path
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import pytest
+
+from certifier.bundle import compute_bundle_id, create_bundle, load_bundle
+from certifier.constants import Severity
 from certifier.models import (
-    NumericClaim,
-    ScopeLock,
-    ValidationSummary,
-    ValidatorResult,
     CertificationProfile,
     ClaimType,
     EvidenceLocator,
     EvidenceType,
-    CertifyRequest,
-    Policy,
-    ValidatorConfig,
+    NumericClaim,
+    ScopeLock,
+    ValidationSummary,
 )
-from certifier.constants import Severity, BundleOutcome
-from certifier.bundle import create_bundle, load_bundle, compute_bundle_id
-from certifier.signing import sign_manifest, verify_signature, generate_keypair
+from certifier.qwed import QWEDVerifier, get_verification_summary, verify_all_claims
+from certifier.signing import VerificationError, sign_manifest, verify_signature
 from certifier.validators import ValidatorRegistry
-from certifier.qwed import QWEDVerifier, verify_all_claims, get_verification_summary
 
 
 @pytest.fixture
@@ -112,7 +106,7 @@ def valid_meta_analysis_claims():
         EvidenceLocator(
             source_type=EvidenceType.OA_DOCUMENT,
             uri="doi:10.1001/jama.2024.12345",
-            content_hash="sha256:a" * 64,
+            content_hash="sha256:" + "a" * 64,
         )
     ]
 
@@ -132,8 +126,34 @@ def valid_meta_analysis_claims():
             tau_squared=0.05,
             evidence=evidence,
             metadata={
-                "study_effects": [0.8, 0.9, 0.75, 0.88, 0.92, 0.78, 0.85, 0.82, 0.91, 0.79, 0.87, 0.83],
-                "study_weights": [0.1, 0.08, 0.12, 0.09, 0.07, 0.11, 0.08, 0.09, 0.08, 0.07, 0.06, 0.05],
+                "study_effects": [
+                    0.8,
+                    0.9,
+                    0.75,
+                    0.88,
+                    0.92,
+                    0.78,
+                    0.85,
+                    0.82,
+                    0.91,
+                    0.79,
+                    0.87,
+                    0.83,
+                ],
+                "study_weights": [
+                    0.1,
+                    0.08,
+                    0.12,
+                    0.09,
+                    0.07,
+                    0.11,
+                    0.08,
+                    0.09,
+                    0.08,
+                    0.07,
+                    0.06,
+                    0.05,
+                ],
             },
         ),
         # I² heterogeneity
@@ -163,7 +183,7 @@ def nma_claims():
         EvidenceLocator(
             source_type=EvidenceType.OA_DOCUMENT,
             uri="doi:10.1016/nma.2024.5678",
-            content_hash="sha256:b" * 64,
+            content_hash="sha256:" + "b" * 64,
         )
     ]
 
@@ -298,7 +318,7 @@ class TestFullCertificationPipeline:
 
     def test_qwed_integration(self, valid_meta_analysis_claims):
         """Test QWED deterministic verification integration."""
-        verifier = QWEDVerifier()
+        _verifier = QWEDVerifier()
 
         all_results = verify_all_claims(valid_meta_analysis_claims)
         summary = get_verification_summary(all_results)
@@ -477,7 +497,7 @@ class TestSignatureIntegrity:
 
         # Tampered manifest should fail
         manifest["outcome"] = "REJECT"
-        with pytest.raises(Exception):
+        with pytest.raises(VerificationError, match="Invalid signature"):
             verify_signature(manifest, sig, pubkey)
 
     def test_deterministic_bundle_id(self, sample_claim, sample_scope_lock):
@@ -494,10 +514,11 @@ class TestConnectionPooling:
 
     def test_concurrent_operations(self, temp_dir):
         """Test concurrent job store operations with pool."""
-        from certifier.job_store import JobStore
-        from certifier.models import Job, JobStatus
         import threading
         import time
+
+        from certifier.job_store import JobStore
+        from certifier.models import Job, JobStatus
 
         db_path = temp_dir / "pool_test.db"
         store = JobStore(str(db_path), pool_size=5)
@@ -512,7 +533,7 @@ class TestConnectionPooling:
                     status=JobStatus.PENDING,
                     policy_id="silver",
                     profile=CertificationProfile.SILVER,
-                    created_at=datetime.now(timezone.utc),
+                    created_at=datetime.now(UTC),
                 )
                 store.create(job)
 
@@ -525,14 +546,11 @@ class TestConnectionPooling:
                     completed.append(i)
                 else:
                     errors.append(f"Failed to retrieve job {i}")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- assert every worker failure on the main thread
                 errors.append(str(e))
 
         # Launch concurrent threads
-        threads = [
-            threading.Thread(target=create_and_query, args=(i,))
-            for i in range(20)
-        ]
+        threads = [threading.Thread(target=create_and_query, args=(i,)) for i in range(20)]
 
         for t in threads:
             t.start()
@@ -589,7 +607,7 @@ class TestQWEDVerification:
                 EvidenceLocator(
                     source_type=EvidenceType.OA_DOCUMENT,
                     uri="doi:10.1001/rr_test",
-                    content_hash="sha256:" + "g" * 64,
+                    content_hash="sha256:" + "1" * 64,
                 )
             ],
         )
@@ -610,7 +628,7 @@ class TestQWEDVerification:
                 EvidenceLocator(
                     source_type=EvidenceType.OA_DOCUMENT,
                     uri="doi:10.1001/rr_invalid",
-                    content_hash="sha256:" + "h" * 64,
+                    content_hash="sha256:" + "2" * 64,
                 )
             ],
         )

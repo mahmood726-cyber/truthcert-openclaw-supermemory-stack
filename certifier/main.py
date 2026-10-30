@@ -6,74 +6,68 @@ import json
 import os
 import re
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response, APIRouter
-from fastapi.responses import JSONResponse, FileResponse
+import aiofiles
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from .bundle import (
+    create_bundle,
+    get_bundle_dir,
+    list_bundles,
+    load_bundle,
+)
 from .constants import (
+    API_PATH_HEALTH,
     DEFAULT_HOST,
-    DEFAULT_PORT,
-    DEFAULT_RATE_LIMIT_CERTIFY,
-    DEFAULT_RATE_LIMIT_VERIFY,
-    DEFAULT_RATE_LIMIT_DEFAULT,
     DEFAULT_MAX_CLAIMS,
     DEFAULT_MAX_REQUEST_MB,
     DEFAULT_POLICY_CACHE_TTL,
+    DEFAULT_PORT,
+    DEFAULT_RATE_LIMIT_CERTIFY,
+    DEFAULT_RATE_LIMIT_DEFAULT,
+    DEFAULT_RATE_LIMIT_VERIFY,
     ENV_HOST,
-    ENV_PORT,
-    ENV_RATE_LIMIT_CERTIFY,
-    ENV_RATE_LIMIT_VERIFY,
-    ENV_RATE_LIMIT_DEFAULT,
     ENV_MAX_CLAIMS,
     ENV_MAX_REQUEST_MB,
-    API_PATH_HEALTH,
-    API_PATH_JOBS,
-    API_PATH_CERTIFY,
-    API_PATH_VERIFY,
-    API_PATH_BUNDLES,
-    API_PATH_AUDIT,
+    ENV_PORT,
+    ENV_RATE_LIMIT_CERTIFY,
+    ENV_RATE_LIMIT_DEFAULT,
+    ENV_RATE_LIMIT_VERIFY,
     BundleOutcome,
     Severity,
 )
+from .errors import (
+    RateLimitError,
+    TruthCertError,
+    ValidationError,
+    create_not_found_error,
+)
+from .job_store import get_job_store, init_job_store
 from .models import (
     CertifyRequest,
     CertifyResponse,
-    VerifyRequest,
-    VerifyResponse,
-    JobSubmitRequest,
-    JobResponse,
     Job,
+    JobResponse,
     JobStatus,
+    JobSubmitRequest,
     Policy,
     ScopeLock,
     ValidationSummary,
     ValidatorResult,
-    CertificationProfile,
-)
-from .bundle import (
-    create_bundle,
-    load_bundle,
-    list_bundles,
-    get_bundle_dir,
+    VerifyRequest,
+    VerifyResponse,
 )
 from .signing import verify_signature
-from .errors import (
-    TruthCertError,
-    ValidationError,
-    NotFoundError,
-    RateLimitError,
-    create_not_found_error,
-    handle_exception,
-)
 from .validators import ValidatorRegistry
-from .job_store import get_job_store, init_job_store
 
 # =============================================================================
 # Rate Limiting Setup
@@ -89,8 +83,11 @@ _policy_cache: dict[str, tuple[Policy, float]] = {}
 
 
 def load_policy(policy_id: str) -> Policy:
-    """Load a policy with caching."""
-    now = datetime.now(timezone.utc).timestamp()
+    """Load a policy with caching, refusing unsafe identifiers."""
+    # Policy IDs are names, never caller-supplied filesystem paths.
+    if not isinstance(policy_id, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", policy_id) is None:
+        raise ValidationError(message="Invalid policy ID format")
+    now = datetime.now(UTC).timestamp()
 
     # Check cache
     if policy_id in _policy_cache:
@@ -109,6 +106,8 @@ def load_policy(policy_id: str) -> Policy:
         policy_data = json.load(f)
 
     policy = Policy(**policy_data)
+    if policy.policy_id != policy_id:
+        raise ValidationError(message="Policy file identifier does not match requested policy")
     _policy_cache[policy_id] = (policy, now)
     return policy
 
@@ -121,7 +120,7 @@ def load_policy(policy_id: str) -> Policy:
 def validate_bundle_id(bundle_id: str) -> str:
     """Validate and sanitize bundle ID to prevent path traversal."""
     # Only allow alphanumeric, hyphens, underscores, colons
-    if not re.match(r'^[a-zA-Z0-9_:\-]+$', bundle_id):
+    if not re.match(r"^[a-zA-Z0-9_:\-]+$", bundle_id):
         raise ValidationError(
             message="Invalid bundle ID format",
             details={"bundle_id": bundle_id[:50]},
@@ -152,14 +151,13 @@ async def validate_request_size(request: Request) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown."""
     # Startup
     get_bundle_dir()  # Ensure bundle directory exists
     init_job_store()  # Initialize SQLite job store
     yield
     # Shutdown
-    pass
 
 
 # =============================================================================
@@ -183,7 +181,7 @@ api_v1_router = APIRouter(prefix="/api/v1")
 
 
 @app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Handle rate limit exceeded."""
     return JSONResponse(
         status_code=429,
@@ -192,7 +190,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 
 @app.exception_handler(TruthCertError)
-async def truthcert_error_handler(request: Request, exc: TruthCertError):
+async def truthcert_error_handler(request: Request, exc: TruthCertError) -> JSONResponse:
     """Handle TruthCert errors."""
     return JSONResponse(
         status_code=exc.status_code,
@@ -206,13 +204,13 @@ async def truthcert_error_handler(request: Request, exc: TruthCertError):
 
 
 @app.get(API_PATH_HEALTH)
-async def health():
+async def health() -> dict[str, str]:
     """Health check endpoint."""
     return {
         "status": "healthy",
         "service": "truthcert",
         "version": "1.0.0",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
@@ -223,7 +221,7 @@ async def health():
 
 @api_v1_router.post("/jobs", response_model=JobResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def submit_job(request: Request, body: JobSubmitRequest):
+async def submit_job(request: Request, body: JobSubmitRequest) -> JobResponse:
     """Submit a new certification job."""
     await validate_request_size(request)
 
@@ -250,7 +248,7 @@ async def submit_job(request: Request, body: JobSubmitRequest):
 
 @api_v1_router.get("/jobs/{job_id}", response_model=JobResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_job(request: Request, job_id: str):
+async def get_job(request: Request, job_id: str) -> JobResponse:
     """Get job status."""
     job_store = get_job_store()
     job = job_store.get(job_id)
@@ -268,7 +266,7 @@ async def get_job(request: Request, job_id: str):
 
 @api_v1_router.post("/certify", response_model=CertifyResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_CERTIFY, DEFAULT_RATE_LIMIT_CERTIFY))
-async def certify_claims(request: Request, body: CertifyRequest):
+async def certify_claims(request: Request, body: CertifyRequest) -> CertifyResponse:
     """
     Certify a set of claims.
 
@@ -289,9 +287,10 @@ async def certify_claims(request: Request, body: CertifyRequest):
     # Load policy
     policy = load_policy(body.policy_id)
 
-    # Scope lock is mandatory - no auto-generation
-    # The model now requires scope_lock, but we add explicit validation for clarity
+    # Scope lock is mandatory and must bind to the exact selected policy.
     scope_lock = body.scope_lock
+    if scope_lock.policy_id != policy.policy_id or scope_lock.profile != policy.profile:
+        raise ValidationError(message="Scope lock policy or profile does not match selected policy")
 
     # Build validation context
     context = {
@@ -324,7 +323,7 @@ async def certify_claims(request: Request, body: CertifyRequest):
     )
 
     # Create bundle
-    bundle_path, receipt = create_bundle(
+    _bundle_path, receipt = create_bundle(
         claims=body.claims,
         scope_lock=scope_lock,
         policy_id=body.policy_id,
@@ -353,7 +352,7 @@ async def certify_claims(request: Request, body: CertifyRequest):
 
 @api_v1_router.post("/verify", response_model=VerifyResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_VERIFY, DEFAULT_RATE_LIMIT_VERIFY))
-async def verify_bundle(request: Request, body: VerifyRequest):
+async def verify_bundle(request: Request, body: VerifyRequest) -> VerifyResponse:
     """Verify a bundle's integrity and signature."""
     bundle_id = validate_bundle_id(body.bundle_id)
 
@@ -381,6 +380,15 @@ async def verify_bundle(request: Request, body: VerifyRequest):
         schema_valid = False
         errors.append("Missing outcome in manifest")
 
+    # Full claims payload integrity is necessary in addition to a manifest
+    # signature: legacy bundle IDs omit clinical fields such as CI bounds.
+    from .bundle import claims_payload_problems
+
+    payload_errors = claims_payload_problems(bundle_path, manifest)
+    if payload_errors:
+        schema_valid = False
+        errors.extend(payload_errors)
+
     # Signature validation
     signature_valid = None
     if body.check_signature:
@@ -394,9 +402,9 @@ async def verify_bundle(request: Request, body: VerifyRequest):
                 public_key_b64 = pubkey_file.read_text().strip()
                 verify_signature(manifest, signature_b64, public_key_b64)
                 signature_valid = True
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 -- fail-closed verification boundary
                 signature_valid = False
-                errors.append(f"Signature verification failed: {str(e)}")
+                errors.append(f"Signature verification failed: {e!s}")
         else:
             signature_valid = False
             errors.append("Missing signature or public key files")
@@ -418,7 +426,13 @@ async def verify_bundle(request: Request, body: VerifyRequest):
             scope_lock_valid = False
             errors.append("Missing scope lock file")
 
-    valid = schema_valid and (signature_valid is None or signature_valid) and (scope_lock_valid is None or scope_lock_valid)
+    # Disabled checks permit diagnostic inspection only. In particular,
+    # None means NOT_CHECKED, never an implicit True in a public valid flag.
+    if not body.check_signature:
+        warnings.append("NONCERTIFYING: signature verification skipped")
+    if not body.check_scope_lock:
+        warnings.append("NONCERTIFYING: scope lock verification skipped")
+    valid = schema_valid and signature_valid is True and scope_lock_valid is True
 
     return VerifyResponse(
         bundle_id=bundle_id,
@@ -438,7 +452,7 @@ async def verify_bundle(request: Request, body: VerifyRequest):
 
 @api_v1_router.get("/bundles")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def list_all_bundles(request: Request, limit: int = 100, offset: int = 0):
+async def list_all_bundles(request: Request, limit: int = 100, offset: int = 0) -> dict[str, Any]:
     """List all bundles with pagination."""
     bundles = list_bundles(limit=limit, offset=offset)
     return {
@@ -451,7 +465,7 @@ async def list_all_bundles(request: Request, limit: int = 100, offset: int = 0):
 
 @api_v1_router.get("/bundles/{bundle_id}")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_bundle(request: Request, bundle_id: str):
+async def get_bundle(request: Request, bundle_id: str) -> dict[str, Any]:
     """Get bundle details."""
     bundle_id = validate_bundle_id(bundle_id)
 
@@ -467,7 +481,7 @@ async def get_bundle(request: Request, bundle_id: str):
 
 @api_v1_router.get("/bundles/{bundle_id}/receipt.json")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_receipt(request: Request, bundle_id: str):
+async def get_receipt(request: Request, bundle_id: str) -> dict[str, Any]:
     """Get bundle receipt."""
     bundle_id = validate_bundle_id(bundle_id)
 
@@ -478,13 +492,16 @@ async def get_receipt(request: Request, bundle_id: str):
     if not receipt_path.exists():
         raise create_not_found_error("bundle", bundle_id)
 
-    with open(receipt_path) as f:
-        return json.load(f)
+    async with aiofiles.open(receipt_path) as f:
+        receipt = json.loads(await f.read())
+        if not isinstance(receipt, dict):
+            raise TypeError("Invalid receipt object")
+        return receipt
 
 
 @api_v1_router.get("/bundles/{bundle_id}/bundle.tar.gz")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def download_bundle(request: Request, bundle_id: str):
+async def download_bundle(request: Request, bundle_id: str) -> FileResponse:
     """Download bundle as tarball."""
     bundle_id = validate_bundle_id(bundle_id)
 
@@ -496,6 +513,7 @@ async def download_bundle(request: Request, bundle_id: str):
         raise create_not_found_error("bundle", bundle_id)
 
     from .bundle import create_bundle_tarball
+
     tarball_path = create_bundle_tarball(bundle_path)
 
     return FileResponse(
@@ -512,7 +530,7 @@ async def download_bundle(request: Request, bundle_id: str):
 
 @api_v1_router.get("/audit/{run_id}")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_audit_log(request: Request, run_id: str):
+async def get_audit_log(request: Request, run_id: str) -> dict[str, Any]:
     """Get audit log for a run."""
     run_id = validate_bundle_id(run_id)
 
@@ -524,8 +542,8 @@ async def get_audit_log(request: Request, run_id: str):
         raise create_not_found_error("bundle", run_id)
 
     logs = []
-    with open(audit_path) as f:
-        for line in f:
+    async with aiofiles.open(audit_path) as f:
+        async for line in f:
             if line.strip():
                 logs.append(json.loads(line))
 
@@ -544,7 +562,7 @@ app.include_router(api_v1_router)
 # =============================================================================
 
 
-def run_server():
+def run_server() -> None:
     """Run the server."""
     import uvicorn
 

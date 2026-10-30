@@ -4,17 +4,16 @@ Codebase indexer - indexes repository structure into memory.
 
 import hashlib
 import json
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, ClassVar
 
-from .schema import (
-    MemoryItem,
-    MemoryType,
-    MemorySource,
-    CodebaseIndex,
-)
 from .backend_local_sqlite import LocalSQLiteBackend
+from .schema import (
+    CodebaseIndex,
+    MemoryItem,
+    MemorySource,
+    MemoryType,
+)
 
 
 class CodebaseIndexer:
@@ -29,7 +28,7 @@ class CodebaseIndexer:
     """
 
     # Default patterns for key files
-    KEY_FILE_PATTERNS = [
+    KEY_FILE_PATTERNS: ClassVar[list[str]] = [
         "README.md",
         "README.rst",
         "setup.py",
@@ -46,7 +45,7 @@ class CodebaseIndexer:
     ]
 
     # Directories to skip
-    SKIP_DIRS = [
+    SKIP_DIRS: ClassVar[list[str]] = [
         ".git",
         ".hg",
         ".svn",
@@ -62,7 +61,7 @@ class CodebaseIndexer:
     ]
 
     # Extensions to index
-    INDEX_EXTENSIONS = [
+    INDEX_EXTENSIONS: ClassVar[list[str]] = [
         ".py",
         ".js",
         ".ts",
@@ -83,7 +82,7 @@ class CodebaseIndexer:
     def __init__(
         self,
         backend: LocalSQLiteBackend,
-    ):
+    ) -> None:
         self.backend = backend
 
     def index_codebase(
@@ -124,7 +123,7 @@ class CodebaseIndexer:
                     rel_path = str(file_path.relative_to(path))
                     file_hashes[rel_path] = f"sha256:{file_hash}"
                     total_bytes += stat.st_size
-            except (OSError, IOError):
+            except OSError:
                 continue
 
         # Identify key files
@@ -170,7 +169,7 @@ class CodebaseIndexer:
         max_files: int,
     ) -> list[Path]:
         """Collect files to index."""
-        files = []
+        files: list[Path] = []
 
         for item in root.rglob("*"):
             if len(files) >= max_files:
@@ -180,13 +179,11 @@ class CodebaseIndexer:
             if any(skip in item.parts for skip in self.SKIP_DIRS):
                 continue
 
-            if item.is_file():
-                # Check extension
-                if item.suffix.lower() in self.INDEX_EXTENSIONS:
-                    files.append(item)
-                # Or if it's a key file
-                elif item.name in self.KEY_FILE_PATTERNS:
-                    files.append(item)
+            # Check extension
+            if (item.is_file()) and (
+                item.suffix.lower() in self.INDEX_EXTENSIONS or item.name in self.KEY_FILE_PATTERNS
+            ):
+                files.append(item)
 
         return files
 
@@ -317,7 +314,7 @@ class CodebaseIndexer:
                 file_hash = hashlib.sha256(content).hexdigest()
                 rel_path = str(file_path.relative_to(path))
                 file_hashes[rel_path] = f"sha256:{file_hash}"
-            except (OSError, IOError):
+            except OSError:
                 continue
 
         new_hash = self._compute_repo_hash(file_hashes)

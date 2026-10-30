@@ -3,8 +3,9 @@ Remote backend stub - disabled by default.
 Provides interface only for future implementation.
 """
 
-from typing import Any, Optional, Protocol
-from .schema import MemoryItem, MemoryStats, RecallResult, MemoryType, MemorySource
+from typing import Protocol
+
+from .schema import MemoryItem, MemoryStats, MemoryType, RecallResult
 
 
 class RemoteBackend(Protocol):
@@ -14,7 +15,7 @@ class RemoteBackend(Protocol):
         """Store a memory item remotely."""
         ...
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         ...
 
@@ -22,7 +23,7 @@ class RemoteBackend(Protocol):
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
     ) -> RecallResult:
         """Search remote memory."""
         ...
@@ -40,7 +41,7 @@ class RemoteBackendStub:
     This stub provides the interface but raises errors if called.
     """
 
-    def __init__(self, enabled: bool = False, endpoint: str = ""):
+    def __init__(self, enabled: bool = False, endpoint: str = "") -> None:
         self.enabled = enabled
         self.endpoint = endpoint
 
@@ -55,7 +56,7 @@ class RemoteBackendStub:
         self._check_enabled()
         raise NotImplementedError("Remote store not implemented")
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         self._check_enabled()
         raise NotImplementedError("Remote retrieve not implemented")
@@ -64,7 +65,7 @@ class RemoteBackendStub:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
     ) -> RecallResult:
         """Search remote memory."""
         self._check_enabled()
@@ -80,10 +81,9 @@ class RemoteBackendStub:
         self._check_enabled()
         raise NotImplementedError("Remote stats not implemented")
 
-    def _check_enabled(self):
+    def _check_enabled(self) -> None:
         """Check if remote backend is enabled."""
         if not self.enabled:
             raise RuntimeError(
-                "Remote memory backend is disabled. "
-                "Enable it in memory profile if needed."
+                "Remote memory backend is disabled. Enable it in memory profile if needed."
             )

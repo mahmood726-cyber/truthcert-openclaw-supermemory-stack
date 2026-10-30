@@ -2,18 +2,12 @@
 Memory recall module - search, ranking, and recency bias.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
 import math
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from .schema import (
-    MemoryItem,
-    MemoryType,
-    MemorySource,
-    MemoryProfile,
-    RecallResult,
-)
 from .backend_local_sqlite import LocalSQLiteBackend
+from .schema import MemoryItem, MemoryProfile, MemorySource, MemoryType, RecallResult
 
 
 class MemoryRecall:
@@ -31,17 +25,17 @@ class MemoryRecall:
         self,
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
-    ):
+    ) -> None:
         self.backend = backend
         self.profile = profile
 
     def recall(
         self,
         query: str,
-        limit: Optional[int] = None,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        limit: int | None = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         recency_weight: float = 0.3,
         min_relevance: float = 0.0,
     ) -> RecallResult:
@@ -82,7 +76,7 @@ class MemoryRecall:
         # Apply recency weighting and re-rank
         if result.items and recency_weight > 0:
             scored_items = []
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             for item in result.items:
                 # Calculate recency score (decay over time)
@@ -95,9 +89,8 @@ class MemoryRecall:
                 relevance_score = 1.0 / (1 + position * 0.1)
 
                 combined_score = (
-                    (1 - recency_weight) * relevance_score +
-                    recency_weight * recency_score
-                )
+                    1 - recency_weight
+                ) * relevance_score + recency_weight * recency_score
 
                 if combined_score >= min_relevance:
                     scored_items.append((item, combined_score))
@@ -115,8 +108,8 @@ class MemoryRecall:
     def recall_recent(
         self,
         hours: int = 24,
-        limit: Optional[int] = None,
-        type_filter: Optional[MemoryType] = None,
+        limit: int | None = None,
+        type_filter: MemoryType | None = None,
     ) -> list[MemoryItem]:
         """
         Recall recent memory items.
@@ -130,7 +123,7 @@ class MemoryRecall:
             List of recent memory items
         """
         effective_limit = limit or self.profile.max_recall_results
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
         items = self.backend.list_items(
             limit=effective_limit,
@@ -138,15 +131,12 @@ class MemoryRecall:
         )
 
         # Filter by time
-        return [
-            item for item in items
-            if item.created_at_utc >= cutoff
-        ]
+        return [item for item in items if item.created_at_utc >= cutoff]
 
     def recall_by_type(
         self,
         memory_type: MemoryType,
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ) -> list[MemoryItem]:
         """Recall items of a specific type."""
         effective_limit = limit or self.profile.max_recall_results
@@ -157,8 +147,8 @@ class MemoryRecall:
 
     def recall_decisions(
         self,
-        limit: Optional[int] = None,
-        tags_filter: Optional[list[str]] = None,
+        limit: int | None = None,
+        tags_filter: list[str] | None = None,
     ) -> list[MemoryItem]:
         """Recall decision items."""
         effective_limit = limit or self.profile.max_recall_results
@@ -168,14 +158,11 @@ class MemoryRecall:
         )
 
         if tags_filter:
-            items = [
-                item for item in items
-                if any(tag in item.tags for tag in tags_filter)
-            ]
+            items = [item for item in items if any(tag in item.tags for tag in tags_filter)]
 
         return items
 
-    def recall_codebase_index(self) -> Optional[MemoryItem]:
+    def recall_codebase_index(self) -> MemoryItem | None:
         """Recall the most recent codebase index."""
         items = self.backend.list_items(
             limit=1,
@@ -199,10 +186,7 @@ class MemoryRecall:
         summaries = self.recall_by_type(MemoryType.SUMMARY, limit=3)
 
         return {
-            "recent_decisions": [
-                {"text": d.text[:200], "tags": d.tags}
-                for d in decisions
-            ],
+            "recent_decisions": [{"text": d.text[:200], "tags": d.tags} for d in decisions],
             "codebase_indexed": codebase is not None,
             "codebase_path": codebase.metadata.get("repo_path") if codebase else None,
             "summaries": [s.text[:150] for s in summaries],

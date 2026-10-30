@@ -2,16 +2,18 @@
 Memory schema definitions using Pydantic v2.
 """
 
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Optional
-from pydantic import BaseModel, Field
 import hashlib
 import json
+from datetime import UTC, datetime
+from enum import Enum
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class MemoryType(str, Enum):
     """Types of memory items."""
+
     NOTE = "note"
     DECISION = "decision"
     RUNBOOK = "runbook"
@@ -22,6 +24,7 @@ class MemoryType(str, Enum):
 
 class MemorySensitivity(str, Enum):
     """Sensitivity levels for memory items."""
+
     PUBLIC = "public"
     PRIVATE = "private"
     SECRET = "secret"
@@ -29,6 +32,7 @@ class MemorySensitivity(str, Enum):
 
 class MemorySource(str, Enum):
     """Source of memory items."""
+
     CHAT = "chat"
     TOOL = "tool"
     SYSTEM = "system"
@@ -36,6 +40,7 @@ class MemorySource(str, Enum):
 
 class RetentionPolicy(BaseModel):
     """Retention policy for memory items."""
+
     keep_days: int = Field(default=365, ge=0)
     max_items: int = Field(default=10000, ge=0)
     max_bytes: int = Field(default=100 * 1024 * 1024, ge=0)  # 100MB default
@@ -43,13 +48,10 @@ class RetentionPolicy(BaseModel):
 
 class MemoryItem(BaseModel):
     """A single memory item."""
+
     id: str = Field(default="", description="Unique identifier")
-    created_at_utc: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    updated_at_utc: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    created_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at_utc: datetime = Field(default_factory=lambda: datetime.now(UTC))
     type: MemoryType = MemoryType.NOTE
     source: MemorySource = MemorySource.CHAT
     tags: list[str] = Field(default_factory=list)
@@ -75,11 +77,10 @@ class MemoryItem(BaseModel):
 
 class CodebaseIndex(BaseModel):
     """Index of a codebase for memory."""
+
     repo_path: str
     repo_hash: str = ""
-    indexed_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    indexed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     file_count: int = 0
     total_bytes: int = 0
     key_files: list[str] = Field(default_factory=list)
@@ -90,6 +91,7 @@ class CodebaseIndex(BaseModel):
 
 class MemoryProfile(BaseModel):
     """Configuration profile for memory behavior."""
+
     name: str
     auto_recall: bool = True
     auto_capture: bool = True
@@ -107,17 +109,19 @@ class MemoryProfile(BaseModel):
 
 class MemoryStats(BaseModel):
     """Statistics about memory storage."""
+
     total_items: int = 0
     total_bytes: int = 0
     items_by_type: dict[str, int] = Field(default_factory=dict)
     items_by_source: dict[str, int] = Field(default_factory=dict)
-    oldest_item_date: Optional[datetime] = None
-    newest_item_date: Optional[datetime] = None
+    oldest_item_date: datetime | None = None
+    newest_item_date: datetime | None = None
     db_hash: str = ""
 
 
 class RecallResult(BaseModel):
     """Result from a memory recall query."""
+
     items: list[MemoryItem] = Field(default_factory=list)
     query: str = ""
     total_matches: int = 0
@@ -128,6 +132,7 @@ class RecallResult(BaseModel):
 
 class PackedContext(BaseModel):
     """Packed memory context for injection."""
+
     header: str = ""
     content: str = ""
     footer: str = ""

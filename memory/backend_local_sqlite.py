@@ -7,20 +7,21 @@ import hashlib
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Optional
+from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
+from .fts5_sanitizer import sanitize_fts5_query
 from .schema import (
     MemoryItem,
-    MemoryType,
     MemorySensitivity,
     MemorySource,
     MemoryStats,
+    MemoryType,
     RecallResult,
 )
-from .fts5_sanitizer import sanitize_fts5_query
 
 
 class LocalSQLiteBackend:
@@ -34,13 +35,13 @@ class LocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(self, db_path: str = "./memory.db"):
+    def __init__(self, db_path: str = "./memory.db") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     @contextmanager
-    def _get_connection(self):
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
         """Get a database connection with context management."""
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
@@ -50,7 +51,7 @@ class LocalSQLiteBackend:
         finally:
             conn.close()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize database schema."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -144,42 +145,45 @@ class LocalSQLiteBackend:
             # Check for duplicate content
             cursor.execute(
                 "SELECT id FROM memory_items WHERE content_hash = ? AND deleted = 0",
-                (content_hash,)
+                (content_hash,),
             )
             existing = cursor.fetchone()
             if existing:
-                return existing["id"]
+                existing_id = existing["id"]
+                if not isinstance(existing_id, str):
+                    raise TypeError("Invalid memory identifier in database")
+                return existing_id
 
             # Insert new item
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO memory_items (
                     id, created_at_utc, updated_at_utc, type, source,
                     tags, text, metadata, sensitivity, retention, content_hash
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                item.id,
-                item.created_at_utc.isoformat(),
-                item.updated_at_utc.isoformat(),
-                item.type.value,
-                item.source.value,
-                json.dumps(item.tags),
-                item.text,
-                json.dumps(item.metadata),
-                item.sensitivity.value,
-                json.dumps(item.retention.model_dump()),
-                content_hash,
-            ))
+            """,
+                (
+                    item.id,
+                    item.created_at_utc.isoformat(),
+                    item.updated_at_utc.isoformat(),
+                    item.type.value,
+                    item.source.value,
+                    json.dumps(item.tags),
+                    item.text,
+                    json.dumps(item.metadata),
+                    item.sensitivity.value,
+                    json.dumps(item.retention.model_dump()),
+                    content_hash,
+                ),
+            )
 
         return item.id
 
-    def retrieve(self, item_id: str) -> Optional[MemoryItem]:
+    def retrieve(self, item_id: str) -> MemoryItem | None:
         """Retrieve a memory item by ID."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0",
-                (item_id,)
-            )
+            cursor.execute("SELECT * FROM memory_items WHERE id = ? AND deleted = 0", (item_id,))
             row = cursor.fetchone()
 
             if row:
@@ -190,9 +194,9 @@ class LocalSQLiteBackend:
         self,
         query: str,
         limit: int = 10,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         include_deleted: bool = False,
     ) -> RecallResult:
         """
@@ -207,6 +211,7 @@ class LocalSQLiteBackend:
             include_deleted: Include soft-deleted items
         """
         import time
+
         start_time = time.perf_counter()
 
         # Sanitize query to prevent FTS5 injection
@@ -240,10 +245,11 @@ class LocalSQLiteBackend:
                 sql += f" AND ({tag_conditions})"
                 # Escape SQL LIKE wildcards properly (don't remove them, escape them)
                 # This allows literal % and _ in tag names
-                params.extend([
-                    f"%{tag.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%"
+                escaped_tags = [
+                    tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                     for tag in tags_filter
-                ])
+                ]
+                params.extend(f"%{tag}%" for tag in escaped_tags)
 
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
@@ -280,7 +286,7 @@ class LocalSQLiteBackend:
         self,
         limit: int = 100,
         offset: int = 0,
-        type_filter: Optional[MemoryType] = None,
+        type_filter: MemoryType | None = None,
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination."""
@@ -321,7 +327,7 @@ class LocalSQLiteBackend:
             else:
                 cursor.execute(
                     "UPDATE memory_items SET deleted = 1, updated_at_utc = ? WHERE id = ?",
-                    (datetime.now(timezone.utc).isoformat(), item_id)
+                    (datetime.now(UTC).isoformat(), item_id),
                 )
 
             return cursor.rowcount > 0
@@ -450,7 +456,10 @@ class LocalSQLiteBackend:
             # Rebuild FTS
             cursor.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')")
 
-            # Vacuum
-            cursor.execute("VACUUM")
+        # SQLite VACUUM cannot run inside the transaction opened by DELETE
+        # or the FTS5 rebuild. The context manager commits that work first;
+        # run VACUUM on a separate connection without a pending transaction.
+        with self._get_connection() as conn:
+            conn.execute("VACUUM")
 
         return count
