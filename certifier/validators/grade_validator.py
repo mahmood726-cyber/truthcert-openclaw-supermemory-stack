@@ -300,9 +300,16 @@ class GRADECertaintyValidator(Validator):
             errors.extend(domain_errors)
             warnings.extend(domain_warnings)
 
-            # Validate reported certainty matches calculated
+            # Explicit malformed or contradictory certainty must not evade validation.
+            declared = self._declared_grade_values(claim)
             reported = self._get_reported_certainty(claim)
-            if reported and reported != assessment.final_certainty:
+            if declared and reported is None:
+                errors.append({
+                    "claim_id": claim.claim_id,
+                    "issue": "Invalid or conflicting declared GRADE certainty",
+                    "recommendation": "Use one consistent high/moderate/low/very low level",
+                })
+            elif reported is not None and reported != assessment.final_certainty:
                 errors.append({
                     "claim_id": claim.claim_id,
                     "issue": "Certainty mismatch",
@@ -1199,31 +1206,55 @@ class GRADECertaintyValidator(Validator):
 
         return "observational"
 
+    def _declared_grade_values(self, claim: NumericClaim) -> list[Any]:
+        """Return all stated GRADE levels, including normalized metadata aliases."""
+        aliases = {
+            "grade_certainty", "certainty", "certainty_of_evidence",
+            "quality_of_evidence", "coe", "qoe",
+        }
+        values = [
+            value for key, value in claim.metadata.items()
+            if key.lower().replace("-", "_").replace(" ", "_") in aliases
+        ]
+        if claim.grade_certainty is not None:
+            values.append(claim.grade_certainty)
+        return values
+
     def _get_reported_certainty(self, claim: NumericClaim) -> Optional[GRADECertainty]:
-        """Get reported GRADE certainty from claim."""
-        certainty = self._get_stat(claim, ["grade_certainty", "certainty", "coe", "qoe"])
-
-        if certainty is None:
-            certainty = claim.grade_certainty
-
-        if certainty is None:
+        """Parse all declared levels, refusing invalid or conflicting evidence."""
+        declared = self._declared_grade_values(claim)
+        if not declared:
             return None
-
-        certainty_str = str(certainty).upper().replace(" ", "_").replace("-", "_")
 
         certainty_map = {
             "HIGH": GRADECertainty.HIGH,
             "MODERATE": GRADECertainty.MODERATE,
             "LOW": GRADECertainty.LOW,
             "VERY_LOW": GRADECertainty.VERY_LOW,
-            "VERY LOW": GRADECertainty.VERY_LOW,
             "4": GRADECertainty.HIGH,
             "3": GRADECertainty.MODERATE,
             "2": GRADECertainty.LOW,
             "1": GRADECertainty.VERY_LOW,
         }
 
-        return certainty_map.get(certainty_str)
+        parsed = set()
+        for raw in declared:
+            # bool subclasses int, but True is not a GRADE level.
+            if isinstance(raw, bool):
+                return None
+            if isinstance(raw, float):
+                if not math.isfinite(raw) or not raw.is_integer():
+                    return None
+                raw = int(raw)
+            if not isinstance(raw, (str, int)):
+                return None
+            canonical = str(raw).strip().upper().replace(" ", "_").replace("-", "_")
+            certainty = certainty_map.get(canonical)
+            if certainty is None:
+                return None
+            parsed.add(certainty)
+
+        return next(iter(parsed)) if len(parsed) == 1 else None
 
     def _get_stat(self, claim: NumericClaim, keys: list[str]) -> Optional[float]:
         """Get a numeric statistic from claim metadata."""
