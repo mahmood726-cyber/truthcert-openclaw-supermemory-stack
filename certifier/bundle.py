@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import tempfile
 import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,9 +74,9 @@ def compute_bundle_id(
     return f"{HASH_PREFIX}{digest}"
 
 
-def create_bundle_structure(bundle_id: str) -> Path:
-    """Create the directory structure for a new bundle."""
-    bundle_dir = get_bundle_dir()
+def create_bundle_structure(bundle_id: str, bundle_dir: Optional[Path] = None) -> Path:
+    """Create a bundle directory under the selected root."""
+    bundle_dir = bundle_dir if bundle_dir is not None else get_bundle_dir()
     # Use short hash for directory name
     short_id = bundle_id.replace(HASH_PREFIX, "")[:16]
     bundle_path = bundle_dir / f"bundle_{short_id}"
@@ -224,71 +225,81 @@ def create_bundle(
         claims, scope_lock, policy_id, claims_sha256=expected_claims_sha256,
     )
 
-    # Create directory structure
-    bundle_path = create_bundle_structure(bundle_id)
+    # Stage all artifacts privately: incomplete signed bundles must not be visible.
+    bundle_root = get_bundle_dir()
+    final_bundle_path = bundle_root / f"bundle_{bundle_id.removeprefix(HASH_PREFIX)[:16]}"
+    if final_bundle_path.exists() or final_bundle_path.is_symlink():
+        raise FileExistsError(f"Refusing to overwrite an existing bundle: {final_bundle_path}")
 
-    # Write claims and bind their exact serialized bytes into the signed v2 manifest.
-    # The historical bundle_id algorithm remains intact; v1 signed artifacts are
-    # preserved, but cannot be promoted to complete-payload certification.
-    write_claims_jsonl(bundle_path, claims)
-    claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256((bundle_path / CLAIMS_FILE).read_bytes()).hexdigest()}"
-    if claims_sha256 != expected_claims_sha256:
-        raise ValueError("Serialized claims bytes changed before signing")
+    with tempfile.TemporaryDirectory(prefix=".tc-stage-", dir=bundle_root) as stage_dir:
+        bundle_path = create_bundle_structure(bundle_id, bundle_dir=Path(stage_dir))
 
-    # Write scope lock
-    write_scope_lock(bundle_path, scope_lock)
+        # Write claims and bind their exact serialized bytes into the signed v2 manifest.
+        # The historical bundle_id algorithm remains intact; v1 signed artifacts are
+        # preserved, but cannot be promoted to complete-payload certification.
+        write_claims_jsonl(bundle_path, claims)
+        claims_sha256 = f"{HASH_PREFIX}{hashlib.sha256((bundle_path / CLAIMS_FILE).read_bytes()).hexdigest()}"
+        if claims_sha256 != expected_claims_sha256:
+            raise ValueError("Serialized claims bytes changed before signing")
 
-    # Write provenance
-    write_provenance(
-        bundle_path,
-        claims,
-        metadata={
-            "policy_id": policy_id,
-            "profile": scope_lock.profile.value,
-            "model_metadata": model_metadata or {},
-            "tool_metadata": tool_metadata or {},
-        },
-    )
+        # Write scope lock
+        write_scope_lock(bundle_path, scope_lock)
 
-    # Create manifest
-    manifest = BundleManifest(
-        bundle_id=bundle_id,
-        policy_id=policy_id,
-        profile=scope_lock.profile,
-        outcome=outcome,
-        scope_lock_hash=scope_lock.compute_hash(),
-        claim_count=len(claims),
-        claims_sha256=claims_sha256,
-        validators=validators,
-        validation_summary=validation_summary,
-        model_metadata=model_metadata or {},
-        tool_metadata=tool_metadata or {},
-    )
-
-    # Write manifest
-    write_manifest(bundle_path, manifest)
-
-    # Initialize empty files
-    (bundle_path / AUDIT_LOG_FILE).touch()
-    (bundle_path / TELEMETRY_FILE).touch()
-
-    # Sign and create receipt if enabled
-    result: dict[str, Any]
-    if sign:
-        # A requested signature is mandatory: never return a PASS-shaped
-        # unsigned manifest if signing, key loading, or file writing fails.
-        # Leave the exception visible to the calling API/CLI, which must
-        # not construct a certification receipt from an unsigned artifact.
-        result = write_attestation(
+        # Write provenance
+        write_provenance(
             bundle_path,
-            manifest.model_dump(mode="json"),
-            verification_url=verification_url,
+            claims,
+            metadata={
+                "policy_id": policy_id,
+                "profile": scope_lock.profile.value,
+                "model_metadata": model_metadata or {},
+                "tool_metadata": tool_metadata or {},
+            },
         )
-    else:
-        # Explicit unsigned mode is noncertifying, for fixtures/tools only.
-        result = manifest.model_dump(mode="json")
 
-    return bundle_path, result
+        # Create manifest
+        manifest = BundleManifest(
+            bundle_id=bundle_id,
+            policy_id=policy_id,
+            profile=scope_lock.profile,
+            outcome=outcome,
+            scope_lock_hash=scope_lock.compute_hash(),
+            claim_count=len(claims),
+            claims_sha256=claims_sha256,
+            validators=validators,
+            validation_summary=validation_summary,
+            model_metadata=model_metadata or {},
+            tool_metadata=tool_metadata or {},
+        )
+
+        # Write manifest
+        write_manifest(bundle_path, manifest)
+
+        # Initialize empty files
+        (bundle_path / AUDIT_LOG_FILE).touch()
+        (bundle_path / TELEMETRY_FILE).touch()
+
+        # Sign and create receipt if enabled
+        result: dict[str, Any]
+        if sign:
+            # A requested signature is mandatory: never return a PASS-shaped
+            # unsigned manifest if signing, key loading, or file writing fails.
+            # Leave the exception visible to the calling API/CLI, which must
+            # not construct a certification receipt from an unsigned artifact.
+            result = write_attestation(
+                bundle_path,
+                manifest.model_dump(mode="json"),
+                verification_url=verification_url,
+            )
+        else:
+            # Explicit unsigned mode is noncertifying, for fixtures/tools only.
+            result = manifest.model_dump(mode="json")
+
+        # Do not overwrite a historical bundle if another writer published first.
+        if final_bundle_path.exists() or final_bundle_path.is_symlink():
+            raise FileExistsError(f"Refusing to overwrite an existing bundle: {final_bundle_path}")
+        bundle_path.rename(final_bundle_path)
+        return final_bundle_path, result
 
 
 def create_bundle_tarball(bundle_path: Path) -> Path:
