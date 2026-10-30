@@ -2,18 +2,12 @@
 Memory recall module - search, ranking, and recency bias.
 """
 
-from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
 import math
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from .schema import (
-    MemoryItem,
-    MemoryType,
-    MemorySource,
-    MemoryProfile,
-    RecallResult,
-)
 from .backend_local_sqlite import LocalSQLiteBackend
+from .schema import MemoryItem, MemoryProfile, MemorySource, MemoryType, RecallResult
 
 
 class MemoryRecall:
@@ -38,10 +32,10 @@ class MemoryRecall:
     def recall(
         self,
         query: str,
-        limit: Optional[int] = None,
-        type_filter: Optional[MemoryType] = None,
-        source_filter: Optional[MemorySource] = None,
-        tags_filter: Optional[list[str]] = None,
+        limit: int | None = None,
+        type_filter: MemoryType | None = None,
+        source_filter: MemorySource | None = None,
+        tags_filter: list[str] | None = None,
         recency_weight: float = 0.3,
         min_relevance: float = 0.0,
     ) -> RecallResult:
@@ -82,7 +76,7 @@ class MemoryRecall:
         # Apply recency weighting and re-rank
         if result.items and recency_weight > 0:
             scored_items = []
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             for item in result.items:
                 # Calculate recency score (decay over time)
@@ -115,8 +109,8 @@ class MemoryRecall:
     def recall_recent(
         self,
         hours: int = 24,
-        limit: Optional[int] = None,
-        type_filter: Optional[MemoryType] = None,
+        limit: int | None = None,
+        type_filter: MemoryType | None = None,
     ) -> list[MemoryItem]:
         """
         Recall recent memory items.
@@ -130,7 +124,7 @@ class MemoryRecall:
             List of recent memory items
         """
         effective_limit = limit or self.profile.max_recall_results
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
         items = self.backend.list_items(
             limit=effective_limit,
@@ -146,7 +140,7 @@ class MemoryRecall:
     def recall_by_type(
         self,
         memory_type: MemoryType,
-        limit: Optional[int] = None,
+        limit: int | None = None,
     ) -> list[MemoryItem]:
         """Recall items of a specific type."""
         effective_limit = limit or self.profile.max_recall_results
@@ -157,8 +151,8 @@ class MemoryRecall:
 
     def recall_decisions(
         self,
-        limit: Optional[int] = None,
-        tags_filter: Optional[list[str]] = None,
+        limit: int | None = None,
+        tags_filter: list[str] | None = None,
     ) -> list[MemoryItem]:
         """Recall decision items."""
         effective_limit = limit or self.profile.max_recall_results
@@ -175,7 +169,7 @@ class MemoryRecall:
 
         return items
 
-    def recall_codebase_index(self) -> Optional[MemoryItem]:
+    def recall_codebase_index(self) -> MemoryItem | None:
         """Recall the most recent codebase index."""
         items = self.backend.list_items(
             limit=1,
