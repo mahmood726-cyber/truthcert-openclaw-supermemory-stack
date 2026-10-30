@@ -30,3 +30,22 @@ def test_external_source_is_not_rejected_by_memory_normalization():
         {"source": "https://example.org/synthetic-trial"},
         deep=True,
     ) is None
+
+
+def test_malformed_base64_candidate_does_not_create_a_false_memory_refusal():
+    """A padded-string decoding error is not itself evidence of memory use."""
+    from certifier.validators.memory_leak import check_base64_for_memory
+
+    assert check_base64_for_memory("AAAAAAAAAA") is None
+
+
+def test_unexpected_base64_normalization_failure_is_not_silently_ignored(monkeypatch):
+    """Internal detection failure must propagate into blocking validator handling."""
+    from certifier.validators import memory_leak
+
+    def broken_normalizer(_value):
+        raise RuntimeError("synthetic normalizer failure")
+
+    monkeypatch.setattr(memory_leak, "normalize_text", broken_normalizer)
+    with pytest.raises(RuntimeError, match="synthetic normalizer failure"):
+        memory_leak.check_base64_for_memory("bWVtb3J5OnN5bnRoZXRpYw==")
