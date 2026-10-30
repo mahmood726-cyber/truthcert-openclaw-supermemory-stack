@@ -142,17 +142,18 @@ class LocalSQLiteBackend:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            # Check for duplicate content
+            # The historical hash covers text/type/source/tags only. Inspect
+            # every matching row before reusing an ID: a different project,
+            # provenance revision, privacy class, or retention is not a duplicate.
             cursor.execute(
-                "SELECT id FROM memory_items WHERE content_hash = ? AND deleted = 0",
+                """SELECT * FROM memory_items
+                   WHERE content_hash = ? AND deleted = 0 ORDER BY id""",
                 (content_hash,),
             )
-            existing = cursor.fetchone()
-            if existing:
-                existing_id = existing["id"]
-                if not isinstance(existing_id, str):
-                    raise TypeError("Invalid memory identifier in database")
-                return existing_id
+            for existing in cursor.fetchall():
+                stored = self._row_to_item(existing)
+                if stored.same_dedup_identity(item):
+                    return stored.id
 
             # Insert new item
             cursor.execute(
