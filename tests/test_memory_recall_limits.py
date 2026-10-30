@@ -49,18 +49,14 @@ def test_zero_recency_weight_cannot_double_requested_recall_limit(
     assert len(result.items) == 1
 
 
-def test_zero_recency_weight_still_applies_relevance_threshold(
-    synthetic_memories, memory_profile
-):
+def test_zero_recency_weight_still_applies_relevance_threshold(synthetic_memories, memory_profile):
     recall = MemoryRecall(synthetic_memories, memory_profile)
     result = recall.recall("Synthetic", limit=4, recency_weight=0, min_relevance=0.99)
     assert len(result.items) == 1
 
 
 @pytest.mark.parametrize("invalid_weight", [-0.1, 1.1, float("nan"), float("inf")])
-def test_recall_rejects_invalid_recency_weights(
-    synthetic_memories, memory_profile, invalid_weight
-):
+def test_recall_rejects_invalid_recency_weights(synthetic_memories, memory_profile, invalid_weight):
     recall = MemoryRecall(synthetic_memories, memory_profile)
     with pytest.raises(ValueError, match="recency_weight"):
         recall.recall("Synthetic", recency_weight=invalid_weight)
