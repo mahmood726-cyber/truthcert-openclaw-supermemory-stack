@@ -74,6 +74,24 @@ class MemoryItem(BaseModel):
         digest = hashlib.sha256(canonical.encode()).hexdigest()
         return f"sha256:{digest}"
 
+    def same_dedup_identity(self, other: "MemoryItem") -> bool:
+        """Check identity before reusing an existing memory ID.
+
+        The historical content hash deliberately excludes metadata and privacy
+        fields. Preserve its bytes, but never alias different source revisions,
+        project labels, sensitivity, or retention under the same stored ID.
+        Creation timestamps and generated IDs are not part of deduplication.
+        """
+        return (
+            self.type == other.type
+            and self.source == other.source
+            and self.text == other.text
+            and sorted(self.tags) == sorted(other.tags)
+            and self.metadata == other.metadata
+            and self.sensitivity == other.sensitivity
+            and self.retention == other.retention
+        )
+
 
 class CodebaseIndex(BaseModel):
     """Index of a codebase for memory."""
