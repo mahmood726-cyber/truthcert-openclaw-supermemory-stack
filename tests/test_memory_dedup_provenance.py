@@ -1,12 +1,9 @@
-"""Synthetic regression tests for memory deduplication identity boundaries.
-
-Content equality is not sufficient to merge records with different provenance,
-scope, sensitivity, or retention. Memory remains noncertifying context.
-"""
+"""Synthetic scope, provenance, retention and privacy deduplication regressions."""
 
 import pytest
 
 from memory.backend_async_sqlite import AsyncLocalSQLiteBackend
+from memory.backend_local_sqlite import LocalSQLiteBackend
 from memory.schema import (
     MemoryItem,
     MemorySensitivity,
@@ -46,12 +43,18 @@ def _pair(changed_field: str) -> tuple[MemoryItem, MemoryItem]:
 )
 def test_local_memory_dedup_cannot_alias_distinct_provenance(memory_db, changed_field: str) -> None:
     original, different = _pair(changed_field)
-    first_id = memory_db.store(original)
-    second_id = memory_db.store(different)
+    first_backend = LocalSQLiteBackend(str(memory_db.db_path), project_id="project-a")
+    second_backend = (
+        LocalSQLiteBackend(str(memory_db.db_path), project_id="project-b")
+        if changed_field == "project"
+        else first_backend
+    )
+    first_id = first_backend.store(original)
+    second_id = second_backend.store(different)
 
     assert first_id != second_id
-    first = memory_db.retrieve(first_id)
-    second = memory_db.retrieve(second_id)
+    first = first_backend.retrieve(first_id)
+    second = second_backend.retrieve(second_id)
     assert first is not None and second is not None
     assert first.metadata == original.metadata
     assert second.metadata == different.metadata
@@ -59,13 +62,18 @@ def test_local_memory_dedup_cannot_alias_distinct_provenance(memory_db, changed_
     assert second.sensitivity == different.sensitivity
     assert first.retention == original.retention
     assert second.retention == different.retention
+    if changed_field == "project":
+        assert first_backend.retrieve(second_id) is None
+        assert second_backend.retrieve(first_id) is None
 
     exact_duplicate = original.model_copy(deep=True)
     exact_duplicate.id = ""
-    assert memory_db.store(exact_duplicate) == first_id
-    assert memory_db.get_stats().total_items == 2
-    assert memory_db.delete(first_id)
-    assert memory_db.retrieve(second_id) is not None
+    assert first_backend.store(exact_duplicate) == first_id
+    assert first_backend.get_stats().total_items == (
+        1 if changed_field == "project" else 2
+    )
+    assert first_backend.delete(first_id)
+    assert second_backend.retrieve(second_id) is not None
 
 
 @pytest.mark.asyncio
@@ -75,15 +83,21 @@ def test_local_memory_dedup_cannot_alias_distinct_provenance(memory_db, changed_
 async def test_async_memory_dedup_cannot_alias_distinct_provenance(
     tmp_path, changed_field: str
 ) -> None:
-    backend = AsyncLocalSQLiteBackend(str(tmp_path / "memory_dedup_async.db"))
+    db_path = str(tmp_path / "memory_dedup_async.db")
+    first_backend = AsyncLocalSQLiteBackend(db_path, project_id="project-a")
+    second_backend = (
+        AsyncLocalSQLiteBackend(db_path, project_id="project-b")
+        if changed_field == "project"
+        else first_backend
+    )
     try:
         original, different = _pair(changed_field)
-        first_id = await backend.store(original)
-        second_id = await backend.store(different)
+        first_id = await first_backend.store(original)
+        second_id = await second_backend.store(different)
 
         assert first_id != second_id
-        first = await backend.retrieve(first_id)
-        second = await backend.retrieve(second_id)
+        first = await first_backend.retrieve(first_id)
+        second = await second_backend.retrieve(second_id)
         assert first is not None and second is not None
         assert first.metadata == original.metadata
         assert second.metadata == different.metadata
@@ -91,12 +105,19 @@ async def test_async_memory_dedup_cannot_alias_distinct_provenance(
         assert second.sensitivity == different.sensitivity
         assert first.retention == original.retention
         assert second.retention == different.retention
+        if changed_field == "project":
+            assert await first_backend.retrieve(second_id) is None
+            assert await second_backend.retrieve(first_id) is None
 
         exact_duplicate = original.model_copy(deep=True)
         exact_duplicate.id = ""
-        assert await backend.store(exact_duplicate) == first_id
-        assert (await backend.get_stats()).total_items == 2
-        assert await backend.delete(first_id)
-        assert await backend.retrieve(second_id) is not None
+        assert await first_backend.store(exact_duplicate) == first_id
+        assert (await first_backend.get_stats()).total_items == (
+            1 if changed_field == "project" else 2
+        )
+        assert await first_backend.delete(first_id)
+        assert await second_backend.retrieve(second_id) is not None
     finally:
-        await backend.close()
+        await first_backend.close()
+        if second_backend is not first_backend:
+            await second_backend.close()
