@@ -51,34 +51,52 @@ class TestSchemaValidator:
 
         assert "too_short" in str(exc_info.value) or "at least 1" in str(exc_info.value)
 
-    def test_invalid_hash_format_fails(self, sample_scope_lock):
-        """Test that invalid content hash format fails at model or validator level."""
+    @pytest.mark.parametrize(
+        "bad_hash",
+        [
+            "sha256:abc",
+            "sha256:" + "a" * 63,
+            "sha256:" + "a" * 65,
+            "sha256:" + "g" * 64,
+            "sha256:" + "A" * 64,
+            "sha256:" + "a" * 64 + "\n",
+            "md5:" + "a" * 64,
+            "",
+        ],
+    )
+    def test_invalid_hash_format_fails(self, bad_hash):
+        """An invalid digest must never pass Pydantic evidence construction."""
         from pydantic import ValidationError
 
-        # Try to create claim with invalid hash - may fail at model or validator level
-        try:
-            claim = NumericClaim(
-                claim_id="bad-hash",
-                claim_type=ClaimType.EFFECT_SIZE,
-                value=0.5,
-                evidence=[
-                    EvidenceLocator(
-                        source_type=EvidenceType.OA_DOCUMENT,
-                        uri="https://example.com/paper.pdf",
-                        content_hash="sha256:abc",  # Too short - may fail at model level
-                    )
-                ],
+        with pytest.raises(ValidationError, match="64 lowercase hexadecimal characters"):
+            EvidenceLocator(
+                source_type=EvidenceType.OA_DOCUMENT,
+                uri="https://example.com/synthetic.pdf",
+                content_hash=bad_hash,
             )
 
-            # If model creation succeeds, validator should catch it
-            validator = SchemaValidator()
-            result = validator.run([claim], sample_scope_lock, {})
-            # Either passes (if validator doesn't check hash length) or fails
-            # The important thing is the system handles invalid hashes somehow
+    def test_canonical_digest_is_accepted(self):
+        evidence = EvidenceLocator(
+            source_type=EvidenceType.OA_DOCUMENT,
+            uri="https://example.com/synthetic.pdf",
+            content_hash="sha256:" + "a" * 64,
+        )
+        assert evidence.content_hash == "sha256:" + "a" * 64
 
-        except ValidationError:
-            # Model-level validation caught the bad hash - test passes
-            pass
+    def test_schema_rejects_hash_tampered_after_model_creation(
+        self, sample_claim, sample_scope_lock
+    ):
+        """The validator must refuse even if assignment bypasses model creation."""
+        tampered = sample_claim.model_copy(deep=True)
+        tampered.evidence[0].content_hash = "sha256:abc"
+        result = SchemaValidator().run([tampered], sample_scope_lock, {})
+        assert not result.passed
+        assert result.severity == Severity.BLOCK
+        assert any(
+            "Invalid content hash format" in issue["issue"]
+            for issue in result.details["issues"]
+        )
+
 
 
 class TestNoNakedNumbersValidator:
