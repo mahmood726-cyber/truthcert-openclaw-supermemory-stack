@@ -41,7 +41,9 @@ def _pair(changed_field: str) -> tuple[MemoryItem, MemoryItem]:
     return original, different
 
 
-@pytest.mark.parametrize("changed_field", ["project", "source_revision", "sensitivity", "retention"])
+@pytest.mark.parametrize(
+    "changed_field", ["project", "source_revision", "sensitivity", "retention"]
+)
 def test_local_memory_dedup_cannot_alias_distinct_provenance(
     memory_db, changed_field: str
 ) -> None:
@@ -69,7 +71,9 @@ def test_local_memory_dedup_cannot_alias_distinct_provenance(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changed_field", ["project", "source_revision", "sensitivity", "retention"])
+@pytest.mark.parametrize(
+    "changed_field", ["project", "source_revision", "sensitivity", "retention"]
+)
 async def test_async_memory_dedup_cannot_alias_distinct_provenance(
     tmp_path, changed_field: str
 ) -> None:
