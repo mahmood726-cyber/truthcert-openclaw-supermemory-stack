@@ -14,6 +14,7 @@ Enhanced with detection for evasion attempts:
 """
 
 import base64
+import binascii
 import re
 import unicodedata
 from typing import Any, Optional
@@ -145,7 +146,9 @@ def check_base64_for_memory(text: str) -> Optional[str]:
                 "memory", "recall", "remembered", "supermemory", "mem"
             ]):
                 return decoded
-        except Exception:
+        except (binascii.Error, ValueError):
+            # Malformed candidate, not evidence; internal processing failures
+            # propagate to Validator.run, which returns a blocking failure.
             continue
 
     return None
