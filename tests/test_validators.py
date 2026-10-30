@@ -311,8 +311,7 @@ class TestEvidenceAllowlistValidator:
 
     def test_valid_doi_passes(self, sample_scope_lock):
         """Test that valid DOI URIs pass."""
-        from certifier.validators.evidence_allowlist import EvidenceAllowlistValidator
-
+        
         claim = NumericClaim(
             claim_id="doi-claim",
             claim_type=ClaimType.EFFECT_SIZE,
@@ -332,8 +331,7 @@ class TestEvidenceAllowlistValidator:
 
     def test_valid_pmid_passes(self, sample_scope_lock):
         """Test that valid PMID URIs pass."""
-        from certifier.validators.evidence_allowlist import EvidenceAllowlistValidator
-
+        
         claim = NumericClaim(
             claim_id="pmid-claim",
             claim_type=ClaimType.SAMPLE_SIZE,
@@ -353,8 +351,7 @@ class TestEvidenceAllowlistValidator:
 
     def test_memory_uri_blocked(self, sample_scope_lock):
         """Test that memory: URIs are blocked."""
-        from certifier.validators.evidence_allowlist import EvidenceAllowlistValidator
-
+        
         claim = NumericClaim(
             claim_id="memory-uri",
             claim_type=ClaimType.SAMPLE_SIZE,
@@ -375,8 +372,7 @@ class TestEvidenceAllowlistValidator:
 
     def test_file_uri_blocked(self, sample_scope_lock):
         """Test that file:// URIs are blocked in SILVER profile."""
-        from certifier.validators.evidence_allowlist import EvidenceAllowlistValidator
-
+        
         claim = NumericClaim(
             claim_id="file-uri",
             claim_type=ClaimType.EFFECT_SIZE,
@@ -396,8 +392,7 @@ class TestEvidenceAllowlistValidator:
 
     def test_unknown_scheme_blocked(self, sample_scope_lock):
         """Test that unknown URI schemes are blocked."""
-        from certifier.validators.evidence_allowlist import EvidenceAllowlistValidator
-
+        
         claim = NumericClaim(
             claim_id="unknown-scheme",
             claim_type=ClaimType.EFFECT_SIZE,
@@ -417,8 +412,7 @@ class TestEvidenceAllowlistValidator:
 
     def test_trusted_domain_passes(self, sample_scope_lock):
         """Test that trusted domains pass."""
-        from certifier.validators.evidence_allowlist import EvidenceAllowlistValidator
-
+        
         claim = NumericClaim(
             claim_id="trusted-domain",
             claim_type=ClaimType.EFFECT_SIZE,
@@ -442,8 +436,7 @@ class TestHeterogeneityValidator:
 
     def test_valid_i_squared_passes(self, sample_scope_lock):
         """Test that valid I² values pass."""
-        from certifier.validators.domain_pack_heterogeneity import HeterogeneityValidator
-
+        
         claim = NumericClaim(
             claim_id="het-claim",
             claim_type=ClaimType.HETEROGENEITY,
@@ -463,8 +456,7 @@ class TestHeterogeneityValidator:
 
     def test_negative_i_squared_fails(self, sample_scope_lock):
         """Test that negative I² fails."""
-        from certifier.validators.domain_pack_heterogeneity import HeterogeneityValidator
-
+        
         claim = NumericClaim(
             claim_id="neg-i2",
             claim_type=ClaimType.HETEROGENEITY,
@@ -484,8 +476,7 @@ class TestHeterogeneityValidator:
 
     def test_i_squared_over_100_fails(self, sample_scope_lock):
         """Test that I² > 100% fails."""
-        from certifier.validators.domain_pack_heterogeneity import HeterogeneityValidator
-
+        
         claim = NumericClaim(
             claim_id="over-100",
             claim_type=ClaimType.HETEROGENEITY,
@@ -505,8 +496,7 @@ class TestHeterogeneityValidator:
 
     def test_high_heterogeneity_warning(self, sample_scope_lock):
         """Test that high I² (> 75%) generates warning."""
-        from certifier.validators.domain_pack_heterogeneity import HeterogeneityValidator
-
+        
         claim = NumericClaim(
             claim_id="high-het",
             claim_type=ClaimType.HETEROGENEITY,
@@ -528,8 +518,7 @@ class TestHeterogeneityValidator:
 
     def test_negative_tau_squared_fails(self, sample_scope_lock):
         """Test that negative τ² fails."""
-        from certifier.validators.domain_pack_heterogeneity import HeterogeneityValidator
-
+        
         claim = NumericClaim(
             claim_id="neg-tau2",
             claim_type=ClaimType.HETEROGENEITY,
@@ -554,8 +543,7 @@ class TestEffectSizePlausibilityValidator:
 
     def test_valid_risk_ratio_passes(self, sample_scope_lock):
         """Test that valid RR passes."""
-        from certifier.validators.effect_size_plausibility import EffectSizePlausibilityValidator
-
+        
         claim = NumericClaim(
             claim_id="rr-claim",
             claim_type=ClaimType.RISK_RATIO,
@@ -575,8 +563,7 @@ class TestEffectSizePlausibilityValidator:
 
     def test_negative_risk_ratio_fails(self, sample_scope_lock):
         """Test that negative RR fails."""
-        from certifier.validators.effect_size_plausibility import EffectSizePlausibilityValidator
-
+        
         claim = NumericClaim(
             claim_id="neg-rr",
             claim_type=ClaimType.RISK_RATIO,
@@ -596,8 +583,7 @@ class TestEffectSizePlausibilityValidator:
 
     def test_extreme_smd_warning(self, sample_scope_lock):
         """Test that extreme SMD generates warning."""
-        from certifier.validators.effect_size_plausibility import EffectSizePlausibilityValidator
-
+        
         claim = NumericClaim(
             claim_id="extreme-smd",
             claim_type=ClaimType.STANDARDIZED_MEAN_DIFFERENCE,
@@ -619,8 +605,7 @@ class TestEffectSizePlausibilityValidator:
 
     def test_invalid_nnt_fails(self, sample_scope_lock):
         """Test that NNT < 1 fails."""
-        from certifier.validators.effect_size_plausibility import EffectSizePlausibilityValidator
-
+        
         claim = NumericClaim(
             claim_id="invalid-nnt",
             claim_type=ClaimType.NUMBER_NEEDED_TO_TREAT,

@@ -307,7 +307,7 @@ class TestNewValidatorsIntegration:
     def test_evidence_allowlist_blocks_file_scheme(self, sample_scope_lock):
         """Test that file:// scheme is blocked."""
         from certifier.validators import EvidenceAllowlistValidator
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="file-scheme",
@@ -331,7 +331,7 @@ class TestNewValidatorsIntegration:
     def test_heterogeneity_validator_detects_invalid_i_squared(self, sample_scope_lock):
         """Test that I² > 100% is detected."""
         from certifier.validators import HeterogeneityValidator
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="invalid-i2",
@@ -354,7 +354,7 @@ class TestNewValidatorsIntegration:
     def test_effect_size_validator_detects_negative_rr(self, sample_scope_lock):
         """Test that negative risk ratio is detected."""
         from certifier.validators import EffectSizePlausibilityValidator
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="negative-rr",

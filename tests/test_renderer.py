@@ -98,7 +98,7 @@ class TestPCNRenderer:
 
     def test_render_with_confidence_interval(self, sample_scope_lock, signing_keys, temp_dir):
         """Test rendering claim with confidence interval."""
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         claim = NumericClaim(
             claim_id="ci-claim",
@@ -141,7 +141,7 @@ class TestPCNRenderer:
 
     def test_html_escaping(self, sample_scope_lock, signing_keys, temp_dir):
         """Test that HTML is properly escaped."""
-        from certifier.models import NumericClaim, EvidenceLocator, EvidenceType, ClaimType
+        from certifier.models import EvidenceLocator, EvidenceType, ClaimType
 
         # Create claim with potentially dangerous content
         claim = NumericClaim(
