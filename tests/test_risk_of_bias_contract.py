@@ -10,7 +10,6 @@ from certifier.validators.risk_of_bias import (
     ROBINSIValidator,
 )
 
-
 PACKS = [
     (ROB2Validator, "rob2_assessments"),
     (ROBINSIValidator, "robinsi_assessments"),
