@@ -654,3 +654,43 @@ class TestAsyncConnectionPooling:
         finally:
             await backend1.close()
             await backend2.close()
+
+
+class TestAsyncRetrievalBounds:
+    """Negative SQLite LIMIT values must never expose unbounded private records."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invalid_limit", [-1, 0, True, 1.5])
+    async def test_async_search_refuses_invalid_limit(self, async_db, invalid_limit):
+        with pytest.raises(ValueError, match="limit must be a positive integer"):
+            await async_db.search("Synthetic", limit=invalid_limit)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invalid_limit", [-1, 0, True, 1.5])
+    async def test_async_list_refuses_invalid_limit(self, async_db, invalid_limit):
+        with pytest.raises(ValueError, match="limit must be a positive integer"):
+            await async_db.list_items(limit=invalid_limit)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("invalid_offset", [-1, True, 1.5])
+    async def test_async_list_refuses_invalid_offset(self, async_db, invalid_offset):
+        with pytest.raises(ValueError, match="offset must be a nonnegative integer"):
+            await async_db.list_items(limit=1, offset=invalid_offset)
+
+    @pytest.mark.asyncio
+    async def test_async_positive_search_and_pagination_remain_bounded(self, async_db):
+        for number in range(3):
+            await async_db.store(
+                MemoryItem(
+                    type=MemoryType.NOTE,
+                    source=MemorySource.CHAT,
+                    text=f"Synthetic retrieval bound {number} distinct",
+                )
+            )
+        result = await async_db.search("Synthetic", limit=1)
+        assert result.total_matches == 3
+        assert len(result.items) == 1
+        first = await async_db.list_items(limit=1, offset=0)
+        second = await async_db.list_items(limit=1, offset=1)
+        assert len(first) == len(second) == 1
+        assert first[0].id != second[0].id
