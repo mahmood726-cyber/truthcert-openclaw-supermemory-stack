@@ -212,6 +212,11 @@ class LocalSQLiteBackend:
         """
         import time
 
+        # SQLite interprets negative LIMIT values as unbounded; refuse them
+        # before constructing any query against private memory records.
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
+
         start_time = time.perf_counter()
 
         # Sanitize query to prevent FTS5 injection
