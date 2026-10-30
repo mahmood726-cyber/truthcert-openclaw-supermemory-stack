@@ -97,8 +97,7 @@ class MemoryRecall:
                 # FTS has already ordered candidates by relevance.
                 relevance_score = 1.0 / (1 + position * 0.1)
                 combined_score = (
-                    (1 - recency_weight) * relevance_score
-                    + recency_weight * recency_score
+                    (1 - recency_weight) * relevance_score + recency_weight * recency_score
                 )
 
                 if combined_score >= min_relevance:
