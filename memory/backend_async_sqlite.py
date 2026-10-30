@@ -289,6 +289,11 @@ class AsyncLocalSQLiteBackend:
             tags_filter: Filter by tags (any match)
             include_deleted: Include soft-deleted items
         """
+        # Keep the asynchronous path as strict as the synchronous backend:
+        # SQLite's negative LIMIT otherwise returns an unbounded result set.
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
+
         if not self._initialized:
             await self.initialize()
 
@@ -378,6 +383,11 @@ class AsyncLocalSQLiteBackend:
         include_deleted: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination asynchronously."""
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
+            raise ValueError("limit must be a positive integer")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be a nonnegative integer")
+
         if not self._initialized:
             await self.initialize()
 

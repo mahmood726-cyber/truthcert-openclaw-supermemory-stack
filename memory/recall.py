@@ -62,7 +62,17 @@ class MemoryRecall:
                 selection_rule="auto_recall disabled",
             )
 
-        effective_limit = limit or self.profile.max_recall_results
+        effective_limit = self.profile.max_recall_results if limit is None else limit
+        if (
+            isinstance(effective_limit, bool)
+            or not isinstance(effective_limit, int)
+            or effective_limit <= 0
+        ):
+            raise ValueError("limit must be a positive integer")
+        if not math.isfinite(recency_weight) or not 0.0 <= recency_weight <= 1.0:
+            raise ValueError("recency_weight must be finite and between 0 and 1")
+        if not math.isfinite(min_relevance) or not 0.0 <= min_relevance <= 1.0:
+            raise ValueError("min_relevance must be finite and between 0 and 1")
 
         # Perform search
         result = self.backend.search(
@@ -73,21 +83,19 @@ class MemoryRecall:
             tags_filter=tags_filter,
         )
 
-        # Apply recency weighting and re-rank
-        if result.items and recency_weight > 0:
+        # Always enforce the requested limit and relevance threshold. A
+        # zero recency weight must not expose the over-fetched candidate set.
+        if result.items:
             scored_items = []
             now = datetime.now(UTC)
 
-            for item in result.items:
-                # Calculate recency score (decay over time)
-                age_hours = (now - item.created_at_utc).total_seconds() / 3600
-                recency_score = math.exp(-age_hours / (24 * 7))  # Week half-life
+            for position, item in enumerate(result.items):
+                # Future-dated records cannot receive an above-one recency score.
+                age_hours = max(0.0, (now - item.created_at_utc).total_seconds() / 3600)
+                recency_score = math.exp(-age_hours / (24 * 7))
 
-                # Combined score (assuming FTS already ranked by relevance)
-                # Position-based relevance (earlier = more relevant)
-                position = result.items.index(item)
+                # FTS has already ordered candidates by relevance.
                 relevance_score = 1.0 / (1 + position * 0.1)
-
                 combined_score = (
                     1 - recency_weight
                 ) * relevance_score + recency_weight * recency_score
@@ -95,10 +103,7 @@ class MemoryRecall:
                 if combined_score >= min_relevance:
                     scored_items.append((item, combined_score))
 
-            # Sort by combined score
-            scored_items.sort(key=lambda x: x[1], reverse=True)
-
-            # Take top results
+            scored_items.sort(key=lambda pair: pair[1], reverse=True)
             result.items = [item for item, _ in scored_items[:effective_limit]]
 
         result.selection_rule = f"FTS5 + recency_weight={recency_weight}, limit={effective_limit}"
