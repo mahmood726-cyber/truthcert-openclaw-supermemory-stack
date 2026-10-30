@@ -83,7 +83,10 @@ _policy_cache: dict[str, tuple[Policy, float]] = {}
 
 
 def load_policy(policy_id: str) -> Policy:
-    """Load a policy with caching."""
+    """Load a policy with caching, refusing unsafe identifiers."""
+    # Policy IDs are names, never caller-supplied filesystem paths.
+    if not isinstance(policy_id, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,128}", policy_id) is None:
+        raise ValidationError(message="Invalid policy ID format")
     now = datetime.now(UTC).timestamp()
 
     # Check cache
@@ -103,6 +106,8 @@ def load_policy(policy_id: str) -> Policy:
         policy_data = json.load(f)
 
     policy = Policy(**policy_data)
+    if policy.policy_id != policy_id:
+        raise ValidationError(message="Policy file identifier does not match requested policy")
     _policy_cache[policy_id] = (policy, now)
     return policy
 
@@ -282,9 +287,10 @@ async def certify_claims(request: Request, body: CertifyRequest) -> CertifyRespo
     # Load policy
     policy = load_policy(body.policy_id)
 
-    # Scope lock is mandatory - no auto-generation
-    # The model now requires scope_lock, but we add explicit validation for clarity
+    # Scope lock is mandatory and must bind to the exact selected policy.
     scope_lock = body.scope_lock
+    if scope_lock.policy_id != policy.policy_id or scope_lock.profile != policy.profile:
+        raise ValidationError(message="Scope lock policy or profile does not match selected policy")
 
     # Build validation context
     context = {

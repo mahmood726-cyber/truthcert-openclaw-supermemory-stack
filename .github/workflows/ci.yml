@@ -71,9 +71,13 @@ jobs:
         run: ruff check .
 
       - name: Run ruff formatter check
+        # Run after a Ruff lint failure too; the job still fails on either gate.
+        if: ${{ success() || failure() }}
         run: ruff format --check .
 
       - name: Run mypy type checking
+        # Surface typing failures independently without bypassing earlier checks.
+        if: ${{ success() || failure() }}
         run: mypy certifier memory cli gateway renderer --ignore-missing-imports
 
   security:
