@@ -44,9 +44,7 @@ def _pair(changed_field: str) -> tuple[MemoryItem, MemoryItem]:
 @pytest.mark.parametrize(
     "changed_field", ["project", "source_revision", "sensitivity", "retention"]
 )
-def test_local_memory_dedup_cannot_alias_distinct_provenance(
-    memory_db, changed_field: str
-) -> None:
+def test_local_memory_dedup_cannot_alias_distinct_provenance(memory_db, changed_field: str) -> None:
     original, different = _pair(changed_field)
     first_id = memory_db.store(original)
     second_id = memory_db.store(different)
