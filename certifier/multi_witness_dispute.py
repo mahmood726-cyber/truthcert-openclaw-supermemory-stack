@@ -12,15 +12,14 @@ Reference:
 TruthCert v3.1.0 Specification - Multi-Witness Protocol
 """
 
-from enum import Enum
-from typing import Any, Optional
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
 import hashlib
 import json
-import statistics
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+from typing import ClassVar, Optional
 
-from .models import NumericClaim, ScopeLock, CertificationProfile
+from .models import CertificationProfile, NumericClaim, ScopeLock
 
 
 class WitnessVerdict(str, Enum):
@@ -92,14 +91,14 @@ class MultiWitnessVerifier:
     """
 
     # Witness requirements by profile
-    WITNESS_REQUIREMENTS = {
+    WITNESS_REQUIREMENTS: ClassVar[dict[CertificationProfile, dict[str, float]]] = {
         CertificationProfile.BRONZE: {"min_witnesses": 1, "threshold": 1.0},
         CertificationProfile.SILVER: {"min_witnesses": 2, "threshold": 0.5},
-        CertificationProfile.GOLD: {"min_witnesses": 3, "threshold": 0.67},
+        CertificationProfile.GOLD: {"min_witnesses": 3, "threshold": 2 / 3},
     }
 
     # Value agreement tolerance (relative)
-    VALUE_TOLERANCE = 0.001  # 0.1% relative difference
+    VALUE_TOLERANCE: ClassVar[float] = 0.001  # 0.1% relative difference
 
     def __init__(
         self,
@@ -108,7 +107,10 @@ class MultiWitnessVerifier:
     ):
         self.profile = profile
         self.requirements = self.WITNESS_REQUIREMENTS[profile]
-        self.threshold = custom_threshold or self.requirements["threshold"]
+        if custom_threshold is not None and not (0 < custom_threshold <= 1):
+            raise ValueError("Witness threshold must be in (0, 1]")
+        self.threshold = (custom_threshold if custom_threshold is not None
+                          else self.requirements["threshold"])
 
     def verify_claim(
         self,
@@ -132,6 +134,16 @@ class MultiWitnessVerifier:
                 },
             )
 
+        # Nonblank distinct IDs are necessary, but do NOT authenticate identities.
+        ids = [w.witness_id for w in witness_results]
+        if any(not isinstance(i, str) or not i.strip() for i in ids) or len(set(ids)) != len(ids):
+            return DisputeRecord(
+                claim_id=claim.claim_id,
+                witnesses=witness_results,
+                resolution=DisputeResolution.INSUFFICIENT,
+                resolution_details={"reason": "duplicate_or_missing_witness_id"},
+            )
+
         # Filter out ERROR results
         valid_witnesses = [w for w in witness_results if w.verdict != WitnessVerdict.ERROR]
 
@@ -144,6 +156,23 @@ class MultiWitnessVerifier:
                     "required": self.requirements["min_witnesses"],
                     "valid_witnesses": len(valid_witnesses),
                     "errors": len(witness_results) - len(valid_witnesses),
+                },
+            )
+
+        # Abstention is not an independent affirmative vote; it must not meet
+        # the minimum voting quorum, even when a report was submitted.
+        active_votes = [
+            w for w in valid_witnesses
+            if w.verdict in (WitnessVerdict.AGREE, WitnessVerdict.DISAGREE)
+        ]
+        if len(active_votes) < self.requirements["min_witnesses"]:
+            return DisputeRecord(
+                claim_id=claim.claim_id,
+                witnesses=witness_results,
+                resolution=DisputeResolution.INSUFFICIENT,
+                resolution_details={
+                    "required_voting_witnesses": self.requirements["min_witnesses"],
+                    "actual_voting_witnesses": len(active_votes),
                 },
             )
 
@@ -163,8 +192,9 @@ class MultiWitnessVerifier:
             # Perfect consensus
             resolution = DisputeResolution.CONSENSUS
             final_value = self._compute_consensus_value(claim.value, agreeing)
-        elif agreement_score >= self.threshold and value_agreement:
-            if agreement_score >= 0.67:
+        elif (value_agreement and agreement_score >= self.threshold
+              and (self.profile != CertificationProfile.SILVER or agreement_score > 0.5)):
+            if agreement_score >= 2 / 3:
                 resolution = DisputeResolution.SUPERMAJORITY
             else:
                 resolution = DisputeResolution.MAJORITY
