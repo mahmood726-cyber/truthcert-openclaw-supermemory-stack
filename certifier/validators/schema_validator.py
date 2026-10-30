@@ -4,8 +4,8 @@ Schema validation for claims and scope locks.
 
 from typing import Any
 
-from ..constants import Severity, HASH_PREFIX
-from ..models import NumericClaim, ScopeLock, ValidatorResult
+from ..constants import Severity
+from ..models import NumericClaim, ScopeLock, ValidatorResult, is_canonical_sha256_content_hash
 from .base import Validator, ValidatorRegistry
 
 
@@ -49,11 +49,11 @@ class SchemaValidator(Validator):
             else:
                 for i, evidence in enumerate(claim.evidence):
                     # Check content hash format
-                    if not evidence.content_hash.startswith(HASH_PREFIX):
+                    if not is_canonical_sha256_content_hash(evidence.content_hash):
                         issues.append({
                             "claim_id": claim.claim_id,
                             "evidence_index": i,
-                            "issue": f"Invalid content hash format, must start with {HASH_PREFIX}",
+                            "issue": "Invalid content hash format: expected sha256: and 64 lowercase hex characters",
                         })
 
                     # Check URI
