@@ -165,3 +165,18 @@ def test_stochastic_algorithm_with_seed_and_valid_hash_passes(
         {},
     )
     assert result.passed, result.model_dump()
+
+
+def test_stochastic_missing_seed_with_correct_input_hash_is_refused(
+    sample_claim, sample_scope_lock,
+):
+    validator = DeterminismValidator()
+    inputs = [2, 4, 6]
+    computed = _computed_claim(sample_claim, {
+        "algorithm": "bootstrap",
+        "inputs": inputs,
+        "inputs_hash": validator._compute_inputs_hash(inputs),
+    })
+    result = validator.run([computed], sample_scope_lock, {})
+    assert not result.passed
+    assert any("seed" in item["issue"] for item in result.details["issues"])

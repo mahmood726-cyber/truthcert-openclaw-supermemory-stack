@@ -275,17 +275,17 @@ def create_bundle(
     # Sign and create receipt if enabled
     result: dict[str, Any]
     if sign:
-        try:
-            result = write_attestation(
-                bundle_path,
-                manifest.model_dump(mode="json"),
-                verification_url=verification_url,
-            )
-        except Exception as e:
-            # If signing fails, still return manifest but note the error
-            result = manifest.model_dump(mode="json")
-            result["signing_error"] = str(e)
+        # A requested signature is mandatory: never return a PASS-shaped
+        # unsigned manifest if signing, key loading, or file writing fails.
+        # Leave the exception visible to the calling API/CLI, which must
+        # not construct a certification receipt from an unsigned artifact.
+        result = write_attestation(
+            bundle_path,
+            manifest.model_dump(mode="json"),
+            verification_url=verification_url,
+        )
     else:
+        # Explicit unsigned mode is noncertifying, for fixtures/tools only.
         result = manifest.model_dump(mode="json")
 
     return bundle_path, result
