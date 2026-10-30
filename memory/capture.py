@@ -53,12 +53,12 @@ class MemoryCapture:
         if not self.profile.auto_capture:
             return None
 
-        # Create summary of the turn
-        summary = self._summarize_turn(user_message, assistant_response)
-
-        # Redact if enabled
+        # Redact before summarizing/truncating: a truncated secret may not
+        # match the full-token redaction pattern and can otherwise leak.
         if self.profile.redact_before_store:
-            summary, _ = self.redactor.redact(summary)
+            user_message, _ = self.redactor.redact(user_message)
+            assistant_response, _ = self.redactor.redact(assistant_response)
+        summary = self._summarize_turn(user_message, assistant_response)
 
         item = MemoryItem(
             type=MemoryType.NOTE,
@@ -67,7 +67,7 @@ class MemoryCapture:
             tags=["chat", f"turn_{turn_number}"],
             metadata={
                 "turn_number": turn_number,
-                **(metadata or {}),
+                **self._safe_metadata(metadata),
             },
         )
 
@@ -110,16 +110,16 @@ class MemoryCapture:
         parts = [f"Tool: {tool_name}"]
 
         if self.profile.store_tool_inputs:
-            input_str = str(inputs)[:500]  # Truncate
+            input_str = str(inputs)
             if self.profile.redact_before_store:
                 input_str, _ = self.redactor.redact(input_str)
-            parts.append(f"Inputs: {input_str}")
+            parts.append(f"Inputs: {input_str[:500]}")
 
         if self.profile.store_tool_results:
-            output_str = str(outputs)[:1000]  # Truncate
+            output_str = str(outputs)
             if self.profile.redact_before_store:
                 output_str, _ = self.redactor.redact(output_str)
-            parts.append(f"Outputs: {output_str}")
+            parts.append(f"Outputs: {output_str[:1000]}")
 
         text = "\n".join(parts)
 
@@ -131,7 +131,7 @@ class MemoryCapture:
             metadata={
                 "tool_name": tool_name,
                 "execution_time_ms": execution_time_ms,
-                **(metadata or {}),
+                **self._safe_metadata(metadata),
             },
         )
 
@@ -167,8 +167,11 @@ class MemoryCapture:
             type=MemoryType.DECISION,
             source=MemorySource.CHAT,
             text=text,
-            tags=["decision"] + (tags or []),
-            metadata=metadata or {},
+            tags=["decision"] + (
+                [self.redactor.redact(t)[0] for t in (tags or [])]
+                if self.profile.redact_before_store else (tags or [])
+            ),
+            metadata=self._safe_metadata(metadata),
         )
 
         return self.backend.store(item)
@@ -201,21 +204,29 @@ class MemoryCapture:
         if errors:
             text += f"Errors: {', '.join(errors)}"
 
+        if self.profile.redact_before_store:
+            text, _ = self.redactor.redact(text)
+
         item = MemoryItem(
             type=MemoryType.DECISION,
             source=MemorySource.SYSTEM,
             text=text,
             tags=["certification", outcome.lower(), profile.lower()],
-            metadata={
+            metadata=self._safe_metadata({
                 "bundle_id": bundle_id,
                 "outcome": outcome,
                 "profile": profile,
                 "claim_count": claim_count,
                 "errors": errors or [],
-            },
+            }),
         )
 
         return self.backend.store(item)
+
+    def _safe_metadata(self, metadata: Optional[dict[str, Any]]) -> dict[str, Any]:
+        """Apply the configured data-minimisation rule to nested metadata."""
+        raw = metadata or {}
+        return self.redactor.redact_dict(raw) if self.profile.redact_before_store else raw
 
     def _summarize_turn(
         self,
