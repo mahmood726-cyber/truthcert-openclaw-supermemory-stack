@@ -112,7 +112,7 @@ def valid_meta_analysis_claims():
         EvidenceLocator(
             source_type=EvidenceType.OA_DOCUMENT,
             uri="doi:10.1001/jama.2024.12345",
-            content_hash="sha256:a" * 64,
+            content_hash="sha256:" + "a" * 64,
         )
     ]
 
@@ -163,7 +163,7 @@ def nma_claims():
         EvidenceLocator(
             source_type=EvidenceType.OA_DOCUMENT,
             uri="doi:10.1016/nma.2024.5678",
-            content_hash="sha256:b" * 64,
+            content_hash="sha256:" + "b" * 64,
         )
     ]
 
@@ -589,7 +589,7 @@ class TestQWEDVerification:
                 EvidenceLocator(
                     source_type=EvidenceType.OA_DOCUMENT,
                     uri="doi:10.1001/rr_test",
-                    content_hash="sha256:" + "g" * 64,
+                    content_hash="sha256:" + "1" * 64,
                 )
             ],
         )
@@ -610,7 +610,7 @@ class TestQWEDVerification:
                 EvidenceLocator(
                     source_type=EvidenceType.OA_DOCUMENT,
                     uri="doi:10.1001/rr_invalid",
-                    content_hash="sha256:" + "h" * 64,
+                    content_hash="sha256:" + "2" * 64,
                 )
             ],
         )
