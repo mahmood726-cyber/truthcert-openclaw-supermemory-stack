@@ -5,10 +5,9 @@ Bundle generation and management for TruthCert.
 import hashlib
 import json
 import os
-import shutil
-import tempfile
 import tarfile
-from datetime import datetime, timezone
+import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -35,7 +34,6 @@ from .models import (
     ScopeLock,
     BundleManifest,
     ValidationSummary,
-    CertificationProfile,
 )
 from .signing import sign_manifest, create_receipt
 
@@ -74,7 +72,7 @@ def compute_bundle_id(
     return f"{HASH_PREFIX}{digest}"
 
 
-def create_bundle_structure(bundle_id: str, bundle_dir: Optional[Path] = None) -> Path:
+def create_bundle_structure(bundle_id: str, bundle_dir: Path | None = None) -> Path:
     """Create a bundle directory under the selected root."""
     bundle_dir = bundle_dir if bundle_dir is not None else get_bundle_dir()
     # Use short hash for directory name
@@ -120,7 +118,7 @@ def write_provenance(
             json.dumps(
                 {
                     "type": "bundle_creation",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "claim_count": len(claims),
                     "metadata": metadata,
                 }
