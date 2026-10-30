@@ -41,7 +41,7 @@ class RemoteBackendStub:
     This stub provides the interface but raises errors if called.
     """
 
-    def __init__(self, enabled: bool = False, endpoint: str = ""):
+    def __init__(self, enabled: bool = False, endpoint: str = "") -> None:
         self.enabled = enabled
         self.endpoint = endpoint
 
@@ -81,7 +81,7 @@ class RemoteBackendStub:
         self._check_enabled()
         raise NotImplementedError("Remote stats not implemented")
 
-    def _check_enabled(self):
+    def _check_enabled(self) -> None:
         """Check if remote backend is enabled."""
         if not self.enabled:
             raise RuntimeError(

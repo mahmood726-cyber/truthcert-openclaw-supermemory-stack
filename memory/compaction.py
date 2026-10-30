@@ -26,7 +26,7 @@ class MemoryCompactor:
     def __init__(
         self,
         backend: LocalSQLiteBackend,
-    ):
+    ) -> None:
         self.backend = backend
 
     def compact_rolling(

@@ -19,7 +19,7 @@ import ast
 import math
 import operator
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, ClassVar
 
@@ -160,11 +160,7 @@ class VerificationResult:
     expected: Any | None = None
     actual: Any | None = None
     tolerance: float | None = None
-    details: dict = None
-
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
+    details: dict[str, Any] = field(default_factory=dict)
 
 
 class QWEDVerifier:
@@ -181,7 +177,7 @@ class QWEDVerifier:
     TOLERANCE_RELAXED = 1e-4
     TOLERANCE_STATISTICAL = 0.01  # 1% for statistical calculations
 
-    def __init__(self, tolerance: float | None = None):
+    def __init__(self, tolerance: float | None = None) -> None:
         self.tolerance = tolerance or self.TOLERANCE_STATISTICAL
 
     def verify_claim(self, claim: NumericClaim) -> list[VerificationResult]:
@@ -239,6 +235,9 @@ class QWEDVerifier:
         upper = claim.upper_bound
         value = claim.value
 
+        if lower is None or upper is None:
+            raise ValueError("CI bounds are required")
+
         # Check ordering
         if lower > upper:
             return VerificationResult(
@@ -291,6 +290,9 @@ class QWEDVerifier:
         lower = claim.lower_bound
         upper = claim.upper_bound
         confidence = claim.confidence_level or 0.95
+
+        if lower is None or upper is None or se is None:
+            raise ValueError("CI bounds and standard error are required")
 
         # Determine critical value (z or t)
         distribution_used = "normal"
@@ -394,6 +396,9 @@ class QWEDVerifier:
         lower = claim.lower_bound
         upper = claim.upper_bound
         confidence = claim.confidence_level or 0.95
+
+        if lower is None or upper is None:
+            raise ValueError("CI bounds are required")
 
         # Get z-value for confidence level
         z = _get_critical_value(confidence, use_t=False)
@@ -726,7 +731,14 @@ class QWEDVerifier:
         if pi_lower is None or pi_upper is None:
             missing.append("PI bounds (lower_bound/upper_bound)")
 
-        if missing:
+        if (
+            pooled is None
+            or tau_squared is None
+            or se_pooled is None
+            or n_studies is None
+            or pi_lower is None
+            or pi_upper is None
+        ):
             return VerificationResult(
                 status=VerificationStatus.ERROR,
                 message=f"Missing required data for PI verification: {', '.join(missing)}",
@@ -828,6 +840,9 @@ class QWEDVerifier:
         variance = claim.variance
         se = claim.standard_error
 
+        if variance is None or se is None:
+            raise ValueError("Variance and standard error are required")
+
         expected_variance = se**2
         diff = abs(variance - expected_variance)
 
@@ -900,7 +915,7 @@ class SafeExpressionEvaluator:
         "tan": math.tan,
     }
 
-    def __init__(self, variables: dict[str, float] | None = None):
+    def __init__(self, variables: dict[str, float] | None = None) -> None:
         """
         Initialize the evaluator with variable bindings.
 
@@ -939,10 +954,6 @@ class SafeExpressionEvaluator:
                 return float(node.value)
             raise ValueError(f"Only numeric constants allowed, got: {type(node.value).__name__}")
 
-        # Legacy Num node (Python < 3.8 compatibility)
-        if isinstance(node, ast.Num):
-            return float(node.n)
-
         # Variable references
         if isinstance(node, ast.Name):
             var_name = node.id
@@ -965,11 +976,11 @@ class SafeExpressionEvaluator:
 
         # Unary operations
         if isinstance(node, ast.UnaryOp):
-            op_type = type(node.op)
-            if op_type not in self.UNARY_OPS:
-                raise ValueError(f"Disallowed unary operator: {op_type.__name__}")
+            unary_type = type(node.op)
+            if unary_type not in self.UNARY_OPS:
+                raise ValueError(f"Disallowed unary operator: {unary_type.__name__}")
             operand = self._eval_node(node.operand)
-            return self.UNARY_OPS[op_type](operand)
+            return self.UNARY_OPS[unary_type](operand)
 
         # Function calls (only allowed functions)
         if isinstance(node, ast.Call):
@@ -1112,7 +1123,7 @@ def verify_all_claims(claims: list[NumericClaim]) -> list[VerificationResult]:
     return all_results
 
 
-def get_verification_summary(results: list[VerificationResult]) -> dict:
+def get_verification_summary(results: list[VerificationResult]) -> dict[str, Any]:
     """
     Get summary statistics from verification results.
     """

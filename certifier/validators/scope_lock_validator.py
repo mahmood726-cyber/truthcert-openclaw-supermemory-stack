@@ -24,7 +24,7 @@ class ScopeLockValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate scope lock."""
-        issues = []
+        issues: list[dict[str, Any]] = []
 
         # Check if expected hash is provided in context
         expected_hash = context.get("expected_scope_lock_hash")

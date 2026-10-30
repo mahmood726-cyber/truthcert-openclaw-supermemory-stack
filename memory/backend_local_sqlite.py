@@ -7,6 +7,7 @@ import hashlib
 import json
 import sqlite3
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,13 +35,13 @@ class LocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(self, db_path: str = "./memory.db"):
+    def __init__(self, db_path: str = "./memory.db") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     @contextmanager
-    def _get_connection(self):
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
         """Get a database connection with context management."""
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
@@ -50,7 +51,7 @@ class LocalSQLiteBackend:
         finally:
             conn.close()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize database schema."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -148,7 +149,10 @@ class LocalSQLiteBackend:
             )
             existing = cursor.fetchone()
             if existing:
-                return existing["id"]
+                existing_id = existing["id"]
+                if not isinstance(existing_id, str):
+                    raise TypeError("Invalid memory identifier in database")
+                return existing_id
 
             # Insert new item
             cursor.execute(

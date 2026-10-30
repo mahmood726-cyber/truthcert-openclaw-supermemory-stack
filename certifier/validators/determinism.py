@@ -33,7 +33,7 @@ class DeterminismValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate determinism requirements."""
-        issues = []
+        issues: list[dict[str, Any]] = []
 
         # Check if determinism is required for this profile
         require_determinism = context.get("require_determinism", False)

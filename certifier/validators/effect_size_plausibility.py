@@ -153,7 +153,7 @@ class EffectSizePlausibilityValidator(Validator):
     description = "Validates effect sizes against plausible bounds"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         self.bounds = EffectSizeBounds()
         # Get custom params from config
@@ -171,8 +171,8 @@ class EffectSizePlausibilityValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate effect size plausibility."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
 
         for claim in claims:
@@ -253,10 +253,10 @@ class EffectSizePlausibilityValidator(Validator):
         self,
         claim: NumericClaim,
         es_type: EffectSizeType,
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate a single effect size claim."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         value = claim.value
 
         # Check for NaN or Inf
@@ -316,9 +316,9 @@ class EffectSizePlausibilityValidator(Validator):
         self,
         claim: NumericClaim,
         es_type: EffectSizeType,
-        errors: list[dict],
-        warnings: list[dict],
-    ):
+        errors: list[dict[str, Any]],
+        warnings: list[dict[str, Any]],
+    ) -> None:
         """Validate ratio measures (RR, OR, HR)."""
         value = claim.value
         b = self.bounds
@@ -368,7 +368,9 @@ class EffectSizePlausibilityValidator(Validator):
                 }
             )
 
-    def _validate_smd(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_smd(
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate standardized mean difference."""
         value = claim.value
         b = self.bounds
@@ -420,7 +422,9 @@ class EffectSizePlausibilityValidator(Validator):
                 }
             )
 
-    def _validate_nnt(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_nnt(
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate number needed to treat."""
         value = abs(claim.value)  # NNH can be negative by convention
         b = self.bounds
@@ -449,7 +453,9 @@ class EffectSizePlausibilityValidator(Validator):
                 }
             )
 
-    def _validate_proportion(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_proportion(
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate proportion (0-1)."""
         value = claim.value
         b = self.bounds
@@ -464,7 +470,9 @@ class EffectSizePlausibilityValidator(Validator):
                 }
             )
 
-    def _validate_percentage(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_percentage(
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate percentage (0-100)."""
         value = claim.value
         b = self.bounds
@@ -479,7 +487,9 @@ class EffectSizePlausibilityValidator(Validator):
                 }
             )
 
-    def _validate_p_value(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_p_value(
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate p-value (0-1)."""
         value = claim.value
         b = self.bounds
@@ -506,7 +516,9 @@ class EffectSizePlausibilityValidator(Validator):
                 }
             )
 
-    def _validate_correlation(self, claim: NumericClaim, errors: list[dict], warnings: list[dict]):
+    def _validate_correlation(
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate correlation coefficient (-1 to 1)."""
         value = claim.value
         b = self.bounds
@@ -522,8 +534,8 @@ class EffectSizePlausibilityValidator(Validator):
             )
 
     def _validate_mean_difference(
-        self, claim: NumericClaim, errors: list[dict], warnings: list[dict]
-    ):
+        self, claim: NumericClaim, errors: list[dict[str, Any]], warnings: list[dict[str, Any]]
+    ) -> None:
         """Validate mean difference (context-dependent)."""
         # Mean differences are context-dependent, so we mainly check for NaN/Inf
         # and that SE/CI are provided for proper interpretation
@@ -542,10 +554,10 @@ class EffectSizePlausibilityValidator(Validator):
         self,
         claim: NumericClaim,
         es_type: EffectSizeType,
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate confidence interval consistency."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         lower = claim.lower_bound
         upper = claim.upper_bound
@@ -590,10 +602,12 @@ class EffectSizePlausibilityValidator(Validator):
 
         return errors, warnings
 
-    def _validate_se_variance(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_se_variance(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate standard error and variance are positive."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         se = claim.metadata.get("se", claim.metadata.get("standard_error"))
         variance = claim.metadata.get("variance", claim.metadata.get("var"))

@@ -40,7 +40,7 @@ class QWEDValidator(Validator):
     description = "QWED deterministic mathematical verification"
     default_severity = Severity.WARN
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
 
@@ -61,8 +61,8 @@ class QWEDValidator(Validator):
     ) -> ValidatorResult:
         """Run QWED verification on all claims."""
         all_results = []
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         for claim in claims:
             claim_results = self.verifier.verify_claim(claim)
@@ -157,8 +157,8 @@ class MathConsistencyValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Run basic math consistency checks."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         checked_count = 0
 
         for claim in claims:

@@ -7,7 +7,7 @@ This module provides the integration between OpenClaw runtime and TruthCert cert
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Self
 
 import httpx
 
@@ -40,7 +40,7 @@ class TruthCertGlue:
         base_url: str | None = None,
         timeout: int = 30,
         memory_commands: MemoryCommands | None = None,
-    ):
+    ) -> None:
         self.base_url = base_url or os.environ.get("TRUTHCERT_URL", "http://localhost:8000")
         self.timeout = int(os.environ.get("TRUTHCERT_TIMEOUT", timeout))
         self.memory = memory_commands or MemoryCommands()
@@ -126,7 +126,10 @@ class TruthCertGlue:
                 },
             )
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Expected an object from the certification service")
+            return payload
 
         except httpx.HTTPError as e:
             return {
@@ -161,7 +164,10 @@ class TruthCertGlue:
                 },
             )
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Expected an object from the certification service")
+            return payload
 
         except httpx.HTTPError as e:
             return {
@@ -173,7 +179,10 @@ class TruthCertGlue:
         try:
             response = self.client.get(f"/jobs/{job_id}")
             response.raise_for_status()
-            return response.json()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise TypeError("Expected an object from the certification service")
+            return payload
 
         except httpx.HTTPError as e:
             return {
@@ -230,14 +239,14 @@ class TruthCertGlue:
         except httpx.HTTPError:
             return False
 
-    def close(self):
+    def close(self) -> None:
         """Close the HTTP client."""
         self.client.close()
 
-    def __enter__(self):
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: object) -> None:
         self.close()
 
 

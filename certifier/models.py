@@ -13,8 +13,10 @@ from pydantic import BaseModel, Field, field_validator
 from .constants import (
     HASH_PREFIX,
     BundleOutcome,
-    CertificationProfile,
     Severity,
+)
+from .constants import (
+    CertificationProfile as CertificationProfile,  # noqa: PLC0414 -- public, typed re-export
 )
 
 # =============================================================================

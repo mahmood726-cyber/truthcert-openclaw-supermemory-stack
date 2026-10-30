@@ -6,9 +6,11 @@ import json
 import os
 import re
 import uuid
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 from fastapi import APIRouter, FastAPI, Request
@@ -144,7 +146,7 @@ async def validate_request_size(request: Request) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown."""
     # Startup
     get_bundle_dir()  # Ensure bundle directory exists
@@ -174,7 +176,7 @@ api_v1_router = APIRouter(prefix="/api/v1")
 
 
 @app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
     """Handle rate limit exceeded."""
     return JSONResponse(
         status_code=429,
@@ -183,7 +185,7 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 
 @app.exception_handler(TruthCertError)
-async def truthcert_error_handler(request: Request, exc: TruthCertError):
+async def truthcert_error_handler(request: Request, exc: TruthCertError) -> JSONResponse:
     """Handle TruthCert errors."""
     return JSONResponse(
         status_code=exc.status_code,
@@ -197,7 +199,7 @@ async def truthcert_error_handler(request: Request, exc: TruthCertError):
 
 
 @app.get(API_PATH_HEALTH)
-async def health():
+async def health() -> dict[str, str]:
     """Health check endpoint."""
     return {
         "status": "healthy",
@@ -214,7 +216,7 @@ async def health():
 
 @api_v1_router.post("/jobs", response_model=JobResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def submit_job(request: Request, body: JobSubmitRequest):
+async def submit_job(request: Request, body: JobSubmitRequest) -> JobResponse:
     """Submit a new certification job."""
     await validate_request_size(request)
 
@@ -241,7 +243,7 @@ async def submit_job(request: Request, body: JobSubmitRequest):
 
 @api_v1_router.get("/jobs/{job_id}", response_model=JobResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_job(request: Request, job_id: str):
+async def get_job(request: Request, job_id: str) -> JobResponse:
     """Get job status."""
     job_store = get_job_store()
     job = job_store.get(job_id)
@@ -259,7 +261,7 @@ async def get_job(request: Request, job_id: str):
 
 @api_v1_router.post("/certify", response_model=CertifyResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_CERTIFY, DEFAULT_RATE_LIMIT_CERTIFY))
-async def certify_claims(request: Request, body: CertifyRequest):
+async def certify_claims(request: Request, body: CertifyRequest) -> CertifyResponse:
     """
     Certify a set of claims.
 
@@ -344,7 +346,7 @@ async def certify_claims(request: Request, body: CertifyRequest):
 
 @api_v1_router.post("/verify", response_model=VerifyResponse)
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_VERIFY, DEFAULT_RATE_LIMIT_VERIFY))
-async def verify_bundle(request: Request, body: VerifyRequest):
+async def verify_bundle(request: Request, body: VerifyRequest) -> VerifyResponse:
     """Verify a bundle's integrity and signature."""
     bundle_id = validate_bundle_id(body.bundle_id)
 
@@ -444,7 +446,7 @@ async def verify_bundle(request: Request, body: VerifyRequest):
 
 @api_v1_router.get("/bundles")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def list_all_bundles(request: Request, limit: int = 100, offset: int = 0):
+async def list_all_bundles(request: Request, limit: int = 100, offset: int = 0) -> dict[str, Any]:
     """List all bundles with pagination."""
     bundles = list_bundles(limit=limit, offset=offset)
     return {
@@ -457,7 +459,7 @@ async def list_all_bundles(request: Request, limit: int = 100, offset: int = 0):
 
 @api_v1_router.get("/bundles/{bundle_id}")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_bundle(request: Request, bundle_id: str):
+async def get_bundle(request: Request, bundle_id: str) -> dict[str, Any]:
     """Get bundle details."""
     bundle_id = validate_bundle_id(bundle_id)
 
@@ -473,7 +475,7 @@ async def get_bundle(request: Request, bundle_id: str):
 
 @api_v1_router.get("/bundles/{bundle_id}/receipt.json")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_receipt(request: Request, bundle_id: str):
+async def get_receipt(request: Request, bundle_id: str) -> dict[str, Any]:
     """Get bundle receipt."""
     bundle_id = validate_bundle_id(bundle_id)
 
@@ -485,12 +487,15 @@ async def get_receipt(request: Request, bundle_id: str):
         raise create_not_found_error("bundle", bundle_id)
 
     async with aiofiles.open(receipt_path) as f:
-        return json.loads(await f.read())
+        receipt = json.loads(await f.read())
+        if not isinstance(receipt, dict):
+            raise TypeError("Invalid receipt object")
+        return receipt
 
 
 @api_v1_router.get("/bundles/{bundle_id}/bundle.tar.gz")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def download_bundle(request: Request, bundle_id: str):
+async def download_bundle(request: Request, bundle_id: str) -> FileResponse:
     """Download bundle as tarball."""
     bundle_id = validate_bundle_id(bundle_id)
 
@@ -519,7 +524,7 @@ async def download_bundle(request: Request, bundle_id: str):
 
 @api_v1_router.get("/audit/{run_id}")
 @limiter.limit(os.environ.get(ENV_RATE_LIMIT_DEFAULT, DEFAULT_RATE_LIMIT_DEFAULT))
-async def get_audit_log(request: Request, run_id: str):
+async def get_audit_log(request: Request, run_id: str) -> dict[str, Any]:
     """Get audit log for a run."""
     run_id = validate_bundle_id(run_id)
 
@@ -551,7 +556,7 @@ app.include_router(api_v1_router)
 # =============================================================================
 
 
-def run_server():
+def run_server() -> None:
     """Run the server."""
     import uvicorn
 

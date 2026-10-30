@@ -5,6 +5,7 @@ CRITICAL: Memory is NEVER evidence. Memory content cannot be used
 to certify numeric claims - it is for planning and context only.
 """
 
+from .backend_async_sqlite import AsyncLocalSQLiteBackend
 from .backend_local_sqlite import LocalSQLiteBackend
 from .backend_remote_stub import RemoteBackendStub
 from .capture import MemoryCapture
@@ -22,12 +23,6 @@ from .schema import (
     MemorySource,
     MemoryType,
 )
-
-# Async backend (requires aiosqlite)
-try:
-    from .backend_async_sqlite import AsyncLocalSQLiteBackend
-except ImportError:
-    AsyncLocalSQLiteBackend = None  # aiosqlite not installed
 
 __all__ = [
     "AsyncLocalSQLiteBackend",

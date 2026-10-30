@@ -46,7 +46,7 @@ class MemoryCommands:
         self,
         db_path: str | None = None,
         profile: MemoryProfile | None = None,
-    ):
+    ) -> None:
         self.db_path = db_path or get_default_db_path()
         self.profile = profile or get_default_profile()
 

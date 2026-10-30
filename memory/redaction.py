@@ -12,7 +12,7 @@ class RedactionRule:
     """A single redaction rule."""
 
     name: str
-    pattern: re.Pattern
+    pattern: re.Pattern[str]
     replacement: str = "[REDACTED]"
     enabled: bool = True
 
@@ -278,7 +278,7 @@ class Redactor:
         enable_email_redaction: bool = False,
         enable_ip_redaction: bool = False,
         enable_phone_redaction: bool = False,
-    ):
+    ) -> None:
         """
         Initialize redactor with rules.
 

@@ -31,7 +31,7 @@ class UnitDriftValidator(Validator):
     default_severity = Severity.WARN
 
     # Common unit families for consistency checking
-    UNIT_FAMILIES: ClassVar[dict[str, str]] = {
+    UNIT_FAMILIES: ClassVar[dict[str, list[str]]] = {
         "time": [
             "seconds",
             "minutes",
@@ -60,8 +60,8 @@ class UnitDriftValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate for unit and timepoint drift."""
-        issues = []
-        warnings = []
+        issues: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Group claims by type for consistency checking
         claims_by_type: dict[str, list[NumericClaim]] = {}

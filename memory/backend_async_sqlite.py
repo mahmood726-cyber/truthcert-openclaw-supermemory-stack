@@ -15,10 +15,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Concatenate, ParamSpec, TypeVar
 
-try:
-    import aiosqlite
-except ImportError:
-    aiosqlite = None
+import aiosqlite
 
 from .fts5_sanitizer import sanitize_fts5_query
 from .schema import (
@@ -43,6 +40,7 @@ def _serialized_write(
     @wraps(operation)
     async def guarded(
         self: AsyncLocalSQLiteBackend,
+        /,
         *args: _P.args,
         **kwargs: _P.kwargs,
     ) -> _R:
@@ -64,11 +62,7 @@ class AsyncLocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(self, db_path: str = "./memory.db", pool_size: int = 5):
-        if aiosqlite is None:
-            raise ImportError(
-                "aiosqlite is required for async operations. Install with: pip install aiosqlite"
-            )
+    def __init__(self, db_path: str = "./memory.db", pool_size: int = 5) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.pool_size = pool_size
@@ -78,7 +72,7 @@ class AsyncLocalSQLiteBackend:
         self._write_lock = asyncio.Lock()
         self._initialized = False
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the schema exactly once even with concurrent first-use calls."""
         async with self._init_lock:
             if self._initialized:
@@ -104,7 +98,7 @@ class AsyncLocalSQLiteBackend:
         await conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
-    async def _return_connection(self, conn: aiosqlite.Connection):
+    async def _return_connection(self, conn: aiosqlite.Connection) -> None:
         """Return a connection to the pool."""
         async with self._pool_lock:
             if len(self._pool) < self.pool_size:
@@ -112,14 +106,14 @@ class AsyncLocalSQLiteBackend:
             else:
                 await conn.close()
 
-    async def close(self):
+    async def close(self) -> None:
         """Close all connections in the pool."""
         async with self._pool_lock:
             for conn in self._pool:
                 await conn.close()
             self._pool.clear()
 
-    async def _init_schema(self, conn: aiosqlite.Connection):
+    async def _init_schema(self, conn: aiosqlite.Connection) -> None:
         """Initialize database schema."""
         cursor = await conn.cursor()
 
@@ -223,7 +217,10 @@ class AsyncLocalSQLiteBackend:
             )
             existing = await cursor.fetchone()
             if existing:
-                return existing["id"]
+                existing_id = existing["id"]
+                if not isinstance(existing_id, str):
+                    raise TypeError("Invalid memory identifier in database")
+                return existing_id
 
             # Insert new item
             await cursor.execute(
@@ -356,6 +353,8 @@ class AsyncLocalSQLiteBackend:
 
             await cursor.execute(count_sql, [safe_query])
             total_row = await cursor.fetchone()
+            if total_row is None:
+                raise RuntimeError("Missing aggregate database row")
             total = total_row[0]
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -470,11 +469,17 @@ class AsyncLocalSQLiteBackend:
 
             # Total items
             await cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 0")
-            total_items = (await cursor.fetchone())[0]
+            total_row = await cursor.fetchone()
+            if total_row is None:
+                raise RuntimeError("Missing aggregate database row")
+            total_items = total_row[0]
 
             # Total bytes (approximate)
             await cursor.execute("SELECT SUM(LENGTH(text)) FROM memory_items WHERE deleted = 0")
-            total_bytes = (await cursor.fetchone())[0] or 0
+            bytes_row = await cursor.fetchone()
+            if bytes_row is None:
+                raise RuntimeError("Missing aggregate database row")
+            total_bytes = bytes_row[0] or 0
 
             # By type
             await cursor.execute("""
@@ -496,6 +501,8 @@ class AsyncLocalSQLiteBackend:
                 FROM memory_items WHERE deleted = 0
             """)
             dates = await cursor.fetchone()
+            if dates is None:
+                raise RuntimeError("Missing aggregate database row")
             oldest = datetime.fromisoformat(dates[0]) if dates[0] else None
             newest = datetime.fromisoformat(dates[1]) if dates[1] else None
 
@@ -548,7 +555,10 @@ class AsyncLocalSQLiteBackend:
 
             if remove_deleted:
                 await cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 1")
-                count = (await cursor.fetchone())[0]
+                count_row = await cursor.fetchone()
+                if count_row is None:
+                    raise RuntimeError("Missing aggregate database row")
+                count = count_row[0]
                 await cursor.execute("DELETE FROM memory_items WHERE deleted = 1")
 
             # Rebuild FTS
@@ -562,7 +572,7 @@ class AsyncLocalSQLiteBackend:
         finally:
             await self._return_connection(conn)
 
-    def _row_to_item(self, row) -> MemoryItem:
+    def _row_to_item(self, row: aiosqlite.Row) -> MemoryItem:
         """Convert a database row to a MemoryItem."""
         return MemoryItem(
             id=row["id"],

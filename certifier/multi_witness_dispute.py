@@ -17,7 +17,7 @@ import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from .models import CertificationProfile, NumericClaim, ScopeLock
 
@@ -51,7 +51,7 @@ class WitnessResult:
     confidence: float | None = None
     reasoning: str | None = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def compute_hash(self) -> str:
         """Compute hash of witness result for audit."""
@@ -78,7 +78,7 @@ class DisputeRecord:
     agreement_score: float = 0.0
     majority_threshold: float = 0.5
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    resolution_details: dict = field(default_factory=dict)
+    resolution_details: dict[str, Any] = field(default_factory=dict)
 
 
 class MultiWitnessVerifier:
@@ -111,7 +111,7 @@ class MultiWitnessVerifier:
         self,
         profile: CertificationProfile = CertificationProfile.SILVER,
         custom_threshold: float | None = None,
-    ):
+    ) -> None:
         self.profile = profile
         self.requirements = self.WITNESS_REQUIREMENTS[profile]
         if custom_threshold is not None and not (0 < custom_threshold <= 1):
@@ -303,7 +303,7 @@ class WitnessOrchestrator:
         self,
         witness_ids: list[str],
         profile: CertificationProfile = CertificationProfile.SILVER,
-    ):
+    ) -> None:
         self.witness_ids = witness_ids
         self.profile = profile
         self.verifier = MultiWitnessVerifier(profile)
@@ -312,7 +312,7 @@ class WitnessOrchestrator:
         self,
         claim: NumericClaim,
         scope_lock: ScopeLock,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Create a witness verification task.
 

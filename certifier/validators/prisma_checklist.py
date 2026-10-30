@@ -16,7 +16,7 @@ from ..models import NumericClaim, ScopeLock, ValidatorConfig, ValidatorResult
 from .base import Validator, ValidatorRegistry
 
 # PRISMA 2020 Checklist Items (27 items + abstract)
-PRISMA_2020_ITEMS = {
+PRISMA_2020_ITEMS: dict[str, Any] = {
     # Title
     "title": {
         "number": 1,
@@ -223,7 +223,7 @@ class PRISMAChecklistValidator(Validator):
     description = "Validates PRISMA 2020 reporting checklist compliance"
     default_severity = Severity.WARN
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -235,8 +235,8 @@ class PRISMAChecklistValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate PRISMA 2020 compliance."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         profile = scope_lock.profile
         required_items = PROFILE_REQUIRED_ITEMS.get(profile, [])
@@ -353,7 +353,9 @@ class PRISMAChecklistValidator(Validator):
         )
 
 
-def get_prisma_template(profile: CertificationProfile = CertificationProfile.SILVER) -> dict:
+def get_prisma_template(
+    profile: CertificationProfile = CertificationProfile.SILVER,
+) -> dict[str, Any]:
     """
     Get a template for PRISMA 2020 metadata.
 
@@ -383,7 +385,7 @@ def get_prisma_template(profile: CertificationProfile = CertificationProfile.SIL
 
 
 def generate_prisma_checklist_report(
-    prisma_data: dict,
+    prisma_data: dict[str, Any],
     profile: CertificationProfile = CertificationProfile.SILVER,
 ) -> str:
     """

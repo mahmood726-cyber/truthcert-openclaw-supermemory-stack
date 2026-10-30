@@ -61,7 +61,7 @@ class HeterogeneityValidator(Validator):
     I2_MODERATE = 50.0
     I2_HIGH = 75.0
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         self.bounds = HeterogeneityBounds()
         # Get custom params from config
@@ -76,8 +76,8 @@ class HeterogeneityValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate heterogeneity claims."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
 
         for claim in claims:
@@ -140,10 +140,12 @@ class HeterogeneityValidator(Validator):
         claim_keys = {k.lower() for k in claim.metadata}
         return bool(het_keys & claim_keys)
 
-    def _validate_claim(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_claim(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate a single heterogeneity claim."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Get heterogeneity values from metadata or claim value
         i_squared = self._get_stat(claim, ["i_squared", "i2", "isquared"])
@@ -330,10 +332,10 @@ class HeterogeneityValidator(Validator):
 
     def _validate_effect_size_heterogeneity(
         self, claim: NumericClaim
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate heterogeneity statistics embedded in effect size claims."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Check if effect size claim has heterogeneity metadata
         if not self._is_heterogeneity_claim(claim):

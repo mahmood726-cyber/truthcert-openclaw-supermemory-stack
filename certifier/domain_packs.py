@@ -285,7 +285,7 @@ DOMAIN_PACKS: dict[DomainPack, DomainPackSpec] = {
 }
 
 
-def get_domain_pack(pack: DomainPack) -> DomainPackSpec:
+def get_domain_pack(pack: DomainPack) -> DomainPackSpec | None:
     """Get specification for a domain pack."""
     return DOMAIN_PACKS.get(pack)
 
@@ -373,7 +373,7 @@ def get_reporting_checklist(pack: DomainPack) -> str:
     return spec.reporting_checklist if spec else "PRISMA 2020"
 
 
-def list_available_packs() -> list[dict]:
+def list_available_packs() -> list[dict[str, Any]]:
     """List all available domain packs with their descriptions."""
     return [
         {

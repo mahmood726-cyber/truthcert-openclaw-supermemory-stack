@@ -8,6 +8,7 @@ import os
 import queue
 import sqlite3
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -35,18 +36,18 @@ class ConnectionPool:
         db_path: str,
         pool_size: int = 5,
         timeout: float = 30.0,
-    ):
+    ) -> None:
         self.db_path = db_path
         self.pool_size = pool_size
         self.timeout = timeout
-        self._pool: queue.Queue = queue.Queue(maxsize=pool_size)
+        self._pool: queue.Queue[sqlite3.Connection] = queue.Queue(maxsize=pool_size)
         self._lock = threading.Lock()
         self._created = 0
 
         # Pre-create connections
         self._initialize_pool()
 
-    def _initialize_pool(self):
+    def _initialize_pool(self) -> None:
         """Pre-create pool connections."""
         for _ in range(min(2, self.pool_size)):  # Start with 2 connections
             self._pool.put(self._create_connection())
@@ -95,7 +96,7 @@ class ConnectionPool:
             # Wait for available connection
             return self._pool.get(timeout=self.timeout)
 
-    def return_connection(self, conn: sqlite3.Connection):
+    def return_connection(self, conn: sqlite3.Connection) -> None:
         """Return a connection to the pool."""
         try:
             self._pool.put_nowait(conn)
@@ -103,7 +104,7 @@ class ConnectionPool:
             # Do not hide failures to release an excess SQLite handle.
             conn.close()
 
-    def close_all(self):
+    def close_all(self) -> None:
         """Close all connections in the pool."""
         while True:
             try:
@@ -125,14 +126,14 @@ class JobStore:
     - Thread-safe operations
     """
 
-    def __init__(self, db_path: str | None = None, pool_size: int = 5):
+    def __init__(self, db_path: str | None = None, pool_size: int = 5) -> None:
         self.db_path = Path(db_path or os.environ.get(ENV_DB_PATH, DEFAULT_DB_PATH))
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._pool = ConnectionPool(str(self.db_path), pool_size=pool_size)
         self._init_db()
 
     @contextmanager
-    def _get_connection(self):
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
         """Get a database connection from pool with context management."""
         conn = self._pool.get_connection()
         try:
@@ -144,7 +145,7 @@ class JobStore:
         finally:
             self._pool.return_connection(conn)
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize database schema."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -188,7 +189,7 @@ class JobStore:
             # Apply migrations
             self._apply_migrations(cursor)
 
-    def _apply_migrations(self, cursor):
+    def _apply_migrations(self, cursor: sqlite3.Cursor) -> None:
         """Apply any pending schema migrations."""
         cursor.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
@@ -344,7 +345,7 @@ class JobStore:
             cursor = conn.cursor()
 
             sql = "SELECT * FROM jobs WHERE 1=1"
-            params = []
+            params: list[str | int] = []
 
             if status:
                 sql += " AND status = ?"
@@ -380,7 +381,10 @@ class JobStore:
             else:
                 cursor.execute("SELECT COUNT(*) FROM jobs")
 
-            return cursor.fetchone()[0]
+            count = cursor.fetchone()[0]
+            if not isinstance(count, int):
+                raise TypeError("Invalid job count in database")
+            return count
 
     def cleanup_old_jobs(self, days: int = 30) -> int:
         """

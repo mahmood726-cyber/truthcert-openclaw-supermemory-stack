@@ -26,7 +26,7 @@ class MemoryCapture:
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
         redactor: Redactor | None = None,
-    ):
+    ) -> None:
         self.backend = backend
         self.profile = profile
         self.redactor = redactor or Redactor()
@@ -259,20 +259,20 @@ class MemoryCapture:
 
 
 # Hook registration for integration
-_capture_hooks: dict[str, list[Callable]] = {
+_capture_hooks: dict[str, list[Callable[..., None]]] = {
     "before_turn": [],
     "after_turn": [],
     "after_tool": [],
 }
 
 
-def register_capture_hook(event: str, callback: Callable) -> None:
+def register_capture_hook(event: str, callback: Callable[..., None]) -> None:
     """Register a capture hook for an event."""
     if event in _capture_hooks:
         _capture_hooks[event].append(callback)
 
 
-def trigger_capture_hooks(event: str, **kwargs) -> None:
+def trigger_capture_hooks(event: str, **kwargs: Any) -> None:
     """Trigger all hooks for an event."""
     for callback in _capture_hooks.get(event, []):
         try:

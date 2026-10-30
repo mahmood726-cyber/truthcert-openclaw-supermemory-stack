@@ -109,7 +109,7 @@ class PublicationBiasValidator(Validator):
     # Minimum studies for publication bias tests
     MIN_STUDIES_FOR_BIAS_TEST = 10
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         self.bounds = PublicationBiasBounds()
         # Get custom params from config
@@ -124,8 +124,8 @@ class PublicationBiasValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate publication bias claims."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
 
         for claim in claims:
@@ -194,9 +194,9 @@ class PublicationBiasValidator(Validator):
         )
 
     @staticmethod
-    def _validate_numeric_metadata(claim: NumericClaim) -> list[dict]:
+    def _validate_numeric_metadata(claim: NumericClaim) -> list[dict[str, Any]]:
         """Refuse malformed declared statistics; never silently treat them as absent."""
-        errors = []
+        errors: list[dict[str, Any]] = []
         for raw_key, value in claim.metadata.items():
             key = raw_key.lower().replace("-", "_").replace(" ", "_")
             if key not in _NUMERIC_BIAS_STATS:
@@ -254,10 +254,12 @@ class PublicationBiasValidator(Validator):
         claim_keys = {k.lower().replace("-", "_").replace(" ", "_") for k in claim.metadata}
         return bool(bias_keys & claim_keys)
 
-    def _validate_eggers_test(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_eggers_test(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate Egger's regression test statistics."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         intercept = self._get_stat(claim, ["egger_intercept", "egger_b0", "egger_int"])
         p_value = self._get_stat(claim, ["egger_pvalue", "egger_p"])
@@ -331,10 +333,12 @@ class PublicationBiasValidator(Validator):
 
         return errors, warnings
 
-    def _validate_beggs_test(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_beggs_test(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate Begg's rank correlation test."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         kendall_tau = self._get_stat(claim, ["begg_tau", "kendall_tau", "tau"])
         p_value = self._get_stat(claim, ["begg_pvalue", "begg_p"])
@@ -369,10 +373,12 @@ class PublicationBiasValidator(Validator):
 
         return errors, warnings
 
-    def _validate_fail_safe_n(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_fail_safe_n(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate fail-safe N calculations."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         rosenthal_n = self._get_stat(claim, ["rosenthal_n", "rosenthal_fsn", "fail_safe_n", "fsn"])
         orwin_n = self._get_stat(claim, ["orwin_n", "orwin_fsn"])
@@ -416,10 +422,12 @@ class PublicationBiasValidator(Validator):
 
         return errors, warnings
 
-    def _validate_trim_and_fill(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_trim_and_fill(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate Duval & Tweedie trim-and-fill statistics."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         imputed = self._get_stat(claim, ["imputed_studies", "tf_imputed", "trimfill_k0"])
         original_estimate = self._get_stat(claim, ["original_estimate", "unadjusted_estimate"])
@@ -471,10 +479,12 @@ class PublicationBiasValidator(Validator):
 
         return errors, warnings
 
-    def _validate_funnel_plot(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_funnel_plot(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate funnel plot asymmetry metrics."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Peters test (weighted regression)
         peters_p = self._get_stat(claim, ["peters_p", "peters_pvalue"])

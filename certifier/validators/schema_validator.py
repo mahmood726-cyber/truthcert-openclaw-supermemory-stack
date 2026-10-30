@@ -24,7 +24,7 @@ class SchemaValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate claim schemas."""
-        issues = []
+        issues: list[dict[str, Any]] = []
 
         for claim in claims:
             # Check required fields

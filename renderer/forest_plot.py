@@ -8,6 +8,7 @@ Only renders data from PASS bundles with valid signatures.
 import html
 import math
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -81,7 +82,7 @@ class ForestPlotGenerator:
     CRITICAL: Only generates plots from certified data.
     """
 
-    def __init__(self, config: ForestPlotConfig | None = None):
+    def __init__(self, config: ForestPlotConfig | None = None) -> None:
         self.config = config or ForestPlotConfig()
 
     def generate(
@@ -472,7 +473,7 @@ class ForestPlotGenerator:
 
 
 def generate_forest_plot_from_claims(
-    claims: list[dict],
+    claims: list[dict[str, Any]],
     title: str = "Forest Plot",
     config: ForestPlotConfig | None = None,
 ) -> str:
@@ -490,7 +491,7 @@ def generate_forest_plot_from_claims(
     generator = ForestPlotGenerator(config)
 
     # Convert claims to StudyData
-    studies = []
+    studies: list[StudyData] = []
     pooled = None
 
     for claim in claims:

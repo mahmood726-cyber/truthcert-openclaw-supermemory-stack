@@ -369,7 +369,7 @@ class ROB2Validator(Validator):
         "selection",
     ]
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -382,8 +382,8 @@ class ROB2Validator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate ROB 2 assessments."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Get ROB 2 assessments from scope_lock metadata
         rob2_data = scope_lock.metadata.get("rob2_assessments", {})
@@ -447,11 +447,11 @@ class ROB2Validator(Validator):
         )
 
     def _validate_study_assessment(
-        self, study_id: str, assessment: dict
-    ) -> tuple[list[dict], list[dict], bool]:
+        self, study_id: str, assessment: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
         """Validate a single study's ROB 2 assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         is_complete = True
 
         domain_judgments = assessment.get("domain_judgments", {})
@@ -541,9 +541,9 @@ class ROB2Validator(Validator):
         self,
         study_id: str,
         overall: str,
-        domain_judgments: dict,
-        warnings: list,
-    ):
+        domain_judgments: dict[str, Any],
+        warnings: list[dict[str, Any]],
+    ) -> None:
         """Check that overall judgment is consistent with domain judgments."""
         judgments = list(domain_judgments.values())
 
@@ -578,9 +578,9 @@ class ROB2Validator(Validator):
                 }
             )
 
-    def _check_overall_consistency(self, rob2_data: dict) -> list[dict]:
+    def _check_overall_consistency(self, rob2_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Check consistency across all study assessments."""
-        warnings = []
+        warnings: list[dict[str, Any]] = []
 
         # Count judgment distributions
         overall_counts = {"low": 0, "some_concerns": 0, "high": 0}
@@ -646,7 +646,7 @@ class ROBINSIValidator(Validator):
         "reported_result",
     ]
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -659,8 +659,8 @@ class ROBINSIValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate ROBINS-I assessments."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Get ROBINS-I assessments from scope_lock metadata
         robinsi_data = scope_lock.metadata.get("robinsi_assessments", {})
@@ -728,11 +728,11 @@ class ROBINSIValidator(Validator):
         )
 
     def _validate_study_assessment(
-        self, study_id: str, assessment: dict
-    ) -> tuple[list[dict], list[dict], bool]:
+        self, study_id: str, assessment: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
         """Validate a single study's ROBINS-I assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         is_complete = True
 
         domain_judgments = assessment.get("domain_judgments", {})
@@ -822,9 +822,9 @@ class ROBINSIValidator(Validator):
         self,
         study_id: str,
         overall: str,
-        domain_judgments: dict,
-        warnings: list,
-    ):
+        domain_judgments: dict[str, Any],
+        warnings: list[dict[str, Any]],
+    ) -> None:
         """Check that overall judgment is consistent with domain judgments."""
         judgments = list(domain_judgments.values())
 
@@ -867,9 +867,9 @@ class ROBINSIValidator(Validator):
                 }
             )
 
-    def _check_overall_consistency(self, robinsi_data: dict) -> list[dict]:
+    def _check_overall_consistency(self, robinsi_data: dict[str, Any]) -> list[dict[str, Any]]:
         """Check consistency across all study assessments."""
-        warnings = []
+        warnings: list[dict[str, Any]] = []
 
         # Count judgment distributions
         overall_counts = {j.value: 0 for j in ROBINSIJudgment}
@@ -932,7 +932,7 @@ class QUADAS2Validator(Validator):
         "flow_timing",
     ]
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -945,8 +945,8 @@ class QUADAS2Validator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate QUADAS-2 assessments."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Get QUADAS-2 assessments from scope_lock metadata
         quadas2_data = scope_lock.metadata.get("quadas2_assessments", {})
@@ -1014,11 +1014,11 @@ class QUADAS2Validator(Validator):
         )
 
     def _validate_study_assessment(
-        self, study_id: str, assessment: dict
-    ) -> tuple[list[dict], list[dict], bool]:
+        self, study_id: str, assessment: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
         """Validate a single study's QUADAS-2 assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         is_complete = True
 
         risk_of_bias = assessment.get("domain_risk_of_bias", {})
@@ -1110,9 +1110,9 @@ class QUADAS2Validator(Validator):
 
         return errors, warnings, is_complete
 
-    def _compute_summary(self, quadas2_data: dict) -> dict:
+    def _compute_summary(self, quadas2_data: dict[str, Any]) -> dict[str, Any]:
         """Compute summary statistics across all studies."""
-        summary = {
+        summary: dict[str, Any] = {
             "risk_of_bias": {
                 domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.DOMAIN_KEYS
             },
@@ -1185,7 +1185,7 @@ class PROBASTValidator(Validator):
         "outcome",
     ]  # Analysis has no applicability
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
         self.strict_mode = params.get("strict_mode", False)
@@ -1198,8 +1198,8 @@ class PROBASTValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate PROBAST assessments."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Get PROBAST assessments from scope_lock metadata
         probast_data = scope_lock.metadata.get("probast_assessments", {})
@@ -1267,11 +1267,11 @@ class PROBASTValidator(Validator):
         )
 
     def _validate_study_assessment(
-        self, study_id: str, assessment: dict
-    ) -> tuple[list[dict], list[dict], bool]:
+        self, study_id: str, assessment: dict[str, Any]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], bool]:
         """Validate a single study's PROBAST assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         is_complete = True
 
         risk_of_bias = assessment.get("domain_risk_of_bias", {})
@@ -1430,10 +1430,10 @@ class PROBASTValidator(Validator):
         self,
         study_id: str,
         overall: str,
-        domain_judgments: dict,
-        warnings: list,
+        domain_judgments: dict[str, Any],
+        warnings: list[dict[str, Any]],
         assessment_type: str,
-    ):
+    ) -> None:
         """Check that overall judgment is consistent with domain judgments."""
         judgments = list(domain_judgments.values())
 
@@ -1468,9 +1468,9 @@ class PROBASTValidator(Validator):
                 }
             )
 
-    def _compute_summary(self, probast_data: dict) -> dict:
+    def _compute_summary(self, probast_data: dict[str, Any]) -> dict[str, Any]:
         """Compute summary statistics across all studies."""
-        summary = {
+        summary: dict[str, Any] = {
             "risk_of_bias": {
                 domain: {"low": 0, "high": 0, "unclear": 0} for domain in self.DOMAIN_KEYS
             },
@@ -1515,7 +1515,7 @@ class PROBASTValidator(Validator):
 # =============================================================================
 
 
-def get_rob2_template() -> dict:
+def get_rob2_template() -> dict[str, Any]:
     """Get a template for ROB 2 assessment data."""
     return {
         "domain_judgments": {domain: None for domain in ROB2_DOMAINS},
@@ -1525,7 +1525,7 @@ def get_rob2_template() -> dict:
     }
 
 
-def get_robinsi_template() -> dict:
+def get_robinsi_template() -> dict[str, Any]:
     """Get a template for ROBINS-I assessment data."""
     return {
         "domain_judgments": {domain: None for domain in ROBINSI_DOMAINS},
@@ -1535,7 +1535,7 @@ def get_robinsi_template() -> dict:
     }
 
 
-def get_quadas2_template() -> dict:
+def get_quadas2_template() -> dict[str, Any]:
     """Get a template for QUADAS-2 assessment data."""
     domains_with_applicability = [
         k for k, v in QUADAS2_DOMAINS.items() if v.get("has_applicability", True)
@@ -1547,7 +1547,7 @@ def get_quadas2_template() -> dict:
     }
 
 
-def get_probast_template() -> dict:
+def get_probast_template() -> dict[str, Any]:
     """Get a template for PROBAST assessment data."""
     applicability_domains = [
         k for k, v in PROBAST_DOMAINS.items() if v.get("has_applicability", True)
@@ -1562,7 +1562,7 @@ def get_probast_template() -> dict:
 
 
 def generate_rob_summary_table(
-    assessments: dict,
+    assessments: dict[str, Any],
     tool: str = "rob2",
 ) -> str:
     """
@@ -1608,7 +1608,7 @@ def generate_rob_summary_table(
         overall = assessment.get("overall_judgment", assessment.get("overall_risk_of_bias", "?"))
 
         # Symbol mapping
-        def symbol(j):
+        def symbol(j: object) -> str:
             if j is None:
                 return "?"
             j_lower = j.lower() if isinstance(j, str) else str(j)

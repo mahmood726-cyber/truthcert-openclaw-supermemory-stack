@@ -47,7 +47,7 @@ class TruthCertError(Exception):
         status_code: int = 500,
         details: dict[str, Any] | None = None,
         hint: str | None = None,
-    ):
+    ) -> None:
         self.message = message
         self.code = code
         self.status_code = status_code
@@ -83,7 +83,7 @@ class ValidationError(TruthCertError):
         code: ErrorCode = ErrorCode.VALIDATION_FAILED,
         details: dict[str, Any] | None = None,
         hint: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             message=message,
             code=code,
@@ -101,7 +101,7 @@ class NotFoundError(TruthCertError):
         message: str,
         code: ErrorCode = ErrorCode.BUNDLE_NOT_FOUND,
         details: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         super().__init__(
             message=message,
             code=code,
@@ -119,7 +119,7 @@ class ConfigurationError(TruthCertError):
         code: ErrorCode = ErrorCode.SIGNING_KEY_NOT_CONFIGURED,
         details: dict[str, Any] | None = None,
         hint: str | None = None,
-    ):
+    ) -> None:
         super().__init__(
             message=message,
             code=code,
@@ -136,7 +136,7 @@ class RateLimitError(TruthCertError):
         self,
         message: str = "Rate limit exceeded. Please try again later.",
         details: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         super().__init__(
             message=message,
             code=ErrorCode.RATE_LIMITED,
@@ -152,7 +152,7 @@ class MemoryLeakError(ValidationError):
         self,
         claim_id: str,
         evidence_uri: str,
-    ):
+    ) -> None:
         super().__init__(
             message=f"Memory cited as evidence in claim {claim_id}: {evidence_uri}",
             code=ErrorCode.MEMORY_LEAK_DETECTED,

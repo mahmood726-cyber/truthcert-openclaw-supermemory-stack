@@ -25,7 +25,7 @@ class MemoryRecall:
         self,
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
-    ):
+    ) -> None:
         self.backend = backend
         self.profile = profile
 

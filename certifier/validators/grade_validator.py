@@ -40,8 +40,8 @@ class GRADECertainty(str, Enum):
     LOW = "LOW"
     VERY_LOW = "VERY_LOW"
 
-    def __lt__(self, other: "GRADECertainty") -> bool:
-        order = [
+    def __lt__(self, other: str) -> bool:
+        order: list[str] = [
             GRADECertainty.VERY_LOW,
             GRADECertainty.LOW,
             GRADECertainty.MODERATE,
@@ -49,7 +49,7 @@ class GRADECertainty(str, Enum):
         ]
         return order.index(self) < order.index(other)
 
-    def __le__(self, other: "GRADECertainty") -> bool:
+    def __le__(self, other: str) -> bool:
         return self == other or self < other
 
     @classmethod
@@ -253,7 +253,7 @@ class GRADECertaintyValidator(Validator):
     description = "Validates GRADE Certainty of Evidence assessments"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         self.thresholds = GRADEThresholds()
 
@@ -288,8 +288,8 @@ class GRADECertaintyValidator(Validator):
         Returns:
             ValidatorResult with pass/fail and detailed assessment
         """
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         assessments = []
         validated_count = 0
 
@@ -453,7 +453,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_concern"
         downgrade = 0
         rationale = "No serious concerns about risk of bias"
-        details = {}
+        details: dict[str, Any] = {}
 
         if high_rob_count is not None and total_studies is not None and total_studies > 0:
             proportion = high_rob_count / total_studies
@@ -522,7 +522,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_concern"
         downgrade = 0
         rationale = "No serious inconsistency"
-        details = {}
+        details: dict[str, Any] = {}
 
         if i_squared is not None:
             details["i_squared"] = i_squared
@@ -594,7 +594,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_concern"
         downgrade = 0
         rationale = "Direct evidence"
-        details = {}
+        details: dict[str, Any] = {}
 
         # Check individual PICO components
         pico_concerns = []
@@ -661,7 +661,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_concern"
         downgrade = 0
         rationale = "Adequate precision"
-        details = {}
+        details: dict[str, Any] = {}
 
         # Get precision-related data
         sample_size = claim.sample_size or self._get_stat(claim, ["n", "sample_size", "total_n"])
@@ -763,7 +763,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_concern"
         downgrade = 0
         rationale = "No evidence of publication bias"
-        details = {}
+        details: dict[str, Any] = {}
 
         # Get publication bias test results
         egger_p = self._get_stat(claim, ["egger_pvalue", "egger_p"])
@@ -842,7 +842,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_upgrade"
         upgrade = 0  # Stored as negative in downgrade_levels
         rationale = "No large effect"
-        details = {}
+        details: dict[str, Any] = {}
 
         # Get effect estimate
         effect = claim.value
@@ -919,7 +919,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_upgrade"
         upgrade = 0
         rationale = "No dose-response gradient"
-        details = {}
+        details: dict[str, Any] = {}
 
         # Check for dose-response data
         dose_response = self._get_stat(claim, ["dose_response", "dose_response_gradient"])
@@ -957,7 +957,7 @@ class GRADECertaintyValidator(Validator):
         concern_level = "no_upgrade"
         upgrade = 0
         rationale = "No evidence confounders would reduce effect"
-        details = {}
+        details: dict[str, Any] = {}
 
         # Check for plausible confounding assessment
         _confounding_direction = self._get_stat(
@@ -987,10 +987,10 @@ class GRADECertaintyValidator(Validator):
 
     def _validate_assessment(
         self, claim: NumericClaim, assessment: GRADEAssessment
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate the GRADE assessment for consistency and correctness."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Validate downgrade domains
         errors_rob, warnings_rob = self._validate_risk_of_bias(claim, assessment.risk_of_bias)
@@ -1047,10 +1047,10 @@ class GRADECertaintyValidator(Validator):
 
     def _validate_risk_of_bias(
         self, claim: NumericClaim, domain: DomainAssessment | None
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate risk of bias domain assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         if not domain:
             return errors, warnings
@@ -1084,10 +1084,10 @@ class GRADECertaintyValidator(Validator):
 
     def _validate_inconsistency(
         self, claim: NumericClaim, domain: DomainAssessment | None
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate inconsistency domain assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         if not domain:
             return errors, warnings
@@ -1130,10 +1130,10 @@ class GRADECertaintyValidator(Validator):
 
     def _validate_indirectness(
         self, claim: NumericClaim, domain: DomainAssessment | None
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate indirectness domain assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         if not domain:
             return errors, warnings
@@ -1153,10 +1153,10 @@ class GRADECertaintyValidator(Validator):
 
     def _validate_imprecision(
         self, claim: NumericClaim, domain: DomainAssessment | None
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate imprecision domain assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         if not domain:
             return errors, warnings
@@ -1189,10 +1189,10 @@ class GRADECertaintyValidator(Validator):
 
     def _validate_publication_bias(
         self, claim: NumericClaim, domain: DomainAssessment | None
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate publication bias domain assessment."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         if not domain:
             return errors, warnings
@@ -1326,7 +1326,7 @@ class GRADECertaintyValidator(Validator):
 
         return None
 
-    def _get_stat_dict(self, claim: NumericClaim, keys: list[str]) -> dict | None:
+    def _get_stat_dict(self, claim: NumericClaim, keys: list[str]) -> dict[str, Any] | None:
         """Get a dictionary statistic from claim metadata."""
         for key in keys:
             if key in claim.metadata:
@@ -1341,7 +1341,7 @@ class GRADECertaintyValidator(Validator):
 
         return None
 
-    def _get_stat_list(self, claim: NumericClaim, keys: list[str]) -> list | None:
+    def _get_stat_list(self, claim: NumericClaim, keys: list[str]) -> list[Any] | None:
         """Get a list statistic from claim metadata."""
         for key in keys:
             if key in claim.metadata:
@@ -1356,10 +1356,10 @@ class GRADECertaintyValidator(Validator):
 
         return None
 
-    def _serialize_assessment(self, assessment: GRADEAssessment) -> dict:
+    def _serialize_assessment(self, assessment: GRADEAssessment) -> dict[str, Any]:
         """Serialize a GRADE assessment to dictionary."""
 
-        def serialize_domain(domain: DomainAssessment | None) -> dict | None:
+        def serialize_domain(domain: DomainAssessment | None) -> dict[str, Any] | None:
             if domain is None:
                 return None
             return {
@@ -1402,7 +1402,7 @@ def calculate_ois(
     relative_risk_reduction: float,
     alpha: float = 0.05,
     power: float = 0.80,
-) -> int:
+) -> int | float:
     """
     Calculate Optimal Information Size (OIS) for a binary outcome.
 

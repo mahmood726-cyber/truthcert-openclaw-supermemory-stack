@@ -3,6 +3,7 @@ Context packer - deterministic injection of memory into prompts.
 """
 
 import hashlib
+from collections.abc import Callable
 
 from .backend_local_sqlite import LocalSQLiteBackend
 from .schema import (
@@ -42,7 +43,7 @@ class ContextPacker:
         self,
         backend: LocalSQLiteBackend,
         profile: MemoryProfile,
-    ):
+    ) -> None:
         self.backend = backend
         self.profile = profile
 
@@ -129,7 +130,7 @@ class ContextPacker:
     def pack_for_turn(
         self,
         query: str,
-        recall_func,
+        recall_func: Callable[..., RecallResult],
         max_chars: int | None = None,
     ) -> PackedContext:
         """

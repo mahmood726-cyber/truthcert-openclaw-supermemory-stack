@@ -106,7 +106,7 @@ HOMOGLYPHS = {
 }
 
 # Reverse mapping for detection
-ASCII_TO_HOMOGLYPHS = {}
+ASCII_TO_HOMOGLYPHS: dict[str, list[str]] = {}
 for homoglyph, ascii_char in HOMOGLYPHS.items():
     if ascii_char not in ASCII_TO_HOMOGLYPHS:
         ASCII_TO_HOMOGLYPHS[ascii_char] = []
@@ -199,7 +199,7 @@ def contains_mixed_scripts(text: str) -> tuple[bool, set[str]]:
     return len(scripts) > 1, scripts
 
 
-def detect_homoglyphs(text: str) -> list[dict]:
+def detect_homoglyphs(text: str) -> list[dict[str, Any]]:
     """
     Detect homoglyph characters in text.
 
@@ -265,7 +265,7 @@ class IDNHomographValidator(Validator):
     description = "Detects IDN homograph attacks in evidence URIs"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
 
@@ -282,8 +282,8 @@ class IDNHomographValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate evidence URIs for homograph attacks."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
 
         for claim in claims:
@@ -324,10 +324,10 @@ class IDNHomographValidator(Validator):
         uri: str,
         claim_id: str,
         evidence_index: int,
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate a single URI for homograph attacks."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         try:
             # First normalize the URI to handle bidi attacks and Unicode normalization
@@ -453,7 +453,7 @@ class IDNHomographValidator(Validator):
         return errors, warnings
 
 
-def check_domain_homograph(domain: str) -> dict:
+def check_domain_homograph(domain: str) -> dict[str, Any]:
     """
     Standalone function to check a domain for homograph attacks.
 
@@ -466,7 +466,7 @@ def check_domain_homograph(domain: str) -> dict:
     # Apply Unicode normalization and strip bidi chars
     normalized_domain = normalize_unicode(domain)
 
-    result = {
+    result: dict[str, Any] = {
         "domain": domain,
         "normalized_domain": normalized_domain,
         "is_safe": True,

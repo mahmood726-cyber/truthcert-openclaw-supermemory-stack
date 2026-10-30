@@ -82,7 +82,7 @@ class CodebaseIndexer:
     def __init__(
         self,
         backend: LocalSQLiteBackend,
-    ):
+    ) -> None:
         self.backend = backend
 
     def index_codebase(
@@ -169,7 +169,7 @@ class CodebaseIndexer:
         max_files: int,
     ) -> list[Path]:
         """Collect files to index."""
-        files = []
+        files: list[Path] = []
 
         for item in root.rglob("*"):
             if len(files) >= max_files:

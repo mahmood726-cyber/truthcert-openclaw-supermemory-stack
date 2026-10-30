@@ -27,7 +27,7 @@ class NoNakedNumbersValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate provenance coverage."""
-        issues = []
+        issues: list[dict[str, Any]] = []
         naked_numbers = []
 
         for claim in claims:

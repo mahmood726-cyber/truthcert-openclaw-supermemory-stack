@@ -5,7 +5,7 @@ import re
 from memory.redaction import RedactionRule, Redactor
 
 
-def test_enabling_optional_email_rule_does_not_change_default_redactor():
+def test_enabling_optional_email_rule_does_not_change_default_redactor() -> None:
     """A prior opt-in must not silently mutate future redaction policies."""
     opted_in = Redactor(enable_email_redaction=True)
     default = Redactor()
@@ -14,7 +14,7 @@ def test_enabling_optional_email_rule_does_not_change_default_redactor():
     assert default.redact(sample)[0] == sample
 
 
-def test_disabling_instance_rule_cannot_disable_another_instances_secret_redaction():
+def test_disabling_instance_rule_cannot_disable_another_instances_secret_redaction() -> None:
     """Mutable class-level rule templates must never be shared by reference."""
     first = Redactor()
     password = next(rule for rule in first.rules if rule.name == "password")
@@ -25,7 +25,7 @@ def test_disabling_instance_rule_cannot_disable_another_instances_secret_redacti
     assert "synthetic-secret-12345" not in fresh.redact(sample)[0]
 
 
-def test_caller_mutation_cannot_disable_a_custom_policy_after_registration():
+def test_caller_mutation_cannot_disable_a_custom_policy_after_registration() -> None:
     """A custom rule must be copied both at construction and add_rule time."""
     rule = RedactionRule(
         name="private_marker",
@@ -41,7 +41,7 @@ def test_caller_mutation_cannot_disable_a_custom_policy_after_registration():
     assert "[REDACTED_CUSTOM]" in added.redact("SYNTHETIC_PRIVATE_MARKER")[0]
 
 
-def test_nested_lists_and_dictionaries_redact_all_text_without_mutating_input():
+def test_nested_lists_and_dictionaries_redact_all_text_without_mutating_input() -> None:
     """Secret values at more than one list depth are scrubbed before storage."""
     secret = "api_key=" + "A" * 24
     original = {

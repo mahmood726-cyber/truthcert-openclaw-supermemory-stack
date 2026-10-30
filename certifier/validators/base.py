@@ -17,7 +17,7 @@ class Validator(ABC):
     description: str = "Base validator"
     default_severity: Severity = Severity.BLOCK
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         self.config = config or ValidatorConfig(name=self.name)
         self.severity = config.severity if config else self.default_severity
 

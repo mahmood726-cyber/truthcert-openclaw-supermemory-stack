@@ -28,7 +28,7 @@ from .errors import ConfigurationError, ErrorCode, TruthCertError
 class SigningError(TruthCertError):
     """Error during signing operations."""
 
-    def __init__(self, message: str, details: dict[str, Any] | None = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
             code=ErrorCode.SIGNING_ERROR,
@@ -40,7 +40,7 @@ class SigningError(TruthCertError):
 class VerificationError(TruthCertError):
     """Error during verification operations."""
 
-    def __init__(self, message: str, details: dict[str, Any] | None = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
         super().__init__(
             message=message,
             code=ErrorCode.VERIFICATION_ERROR,

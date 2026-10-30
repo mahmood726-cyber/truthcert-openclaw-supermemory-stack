@@ -11,7 +11,7 @@ Enhanced with QWED (Quantitative Workflow with External Determinism):
 """
 
 import html
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -29,11 +29,7 @@ class RenderResult:
     success: bool
     content: str
     error: str | None = None
-    warnings: list[str] = None
-
-    def __post_init__(self):
-        if self.warnings is None:
-            self.warnings = []
+    warnings: list[str] = field(default_factory=list)
 
 
 class PCNRenderer:
@@ -100,7 +96,7 @@ class PCNRenderer:
     </style>
     """
 
-    def __init__(self, verify_signatures: bool = True, verify_qwed: bool = True):
+    def __init__(self, verify_signatures: bool = True, verify_qwed: bool = True) -> None:
         self.verify_signatures = verify_signatures
         self.verify_qwed = verify_qwed
         self.qwed_verifier = QWEDVerifier() if verify_qwed else None
@@ -263,7 +259,7 @@ class PCNRenderer:
             f"Numbers must be certified through TruthCert before rendering.",
         )
 
-    def verify_claim_qwed(self, claim_dict: dict) -> tuple[bool, list[dict]]:
+    def verify_claim_qwed(self, claim_dict: dict[str, Any]) -> tuple[bool, list[dict[str, Any]]]:
         """
         Run QWED verification on a claim.
 
@@ -390,7 +386,7 @@ class PCNRenderer:
 
     def _render_claim_with_proof(
         self,
-        claim: dict,
+        claim: dict[str, Any],
         bundle_id: str,
         profile: str,
     ) -> str:

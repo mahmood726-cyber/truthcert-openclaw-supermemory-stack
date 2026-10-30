@@ -16,6 +16,7 @@ import os
 import sys
 from datetime import UTC
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -29,7 +30,7 @@ console = Console()
 
 @click.group()
 @click.version_option(version="1.0.0")
-def cli():
+def cli() -> None:
     """TruthCert CLI - Fail-closed certification for numeric claims."""
 
 
@@ -42,7 +43,7 @@ def cli():
 @click.argument("input_dir", type=click.Path(exists=True))
 @click.option("--policy", "-p", default="policies/silver.json", help="Policy file path")
 @click.option("--output", "-o", default=None, help="Output plan file")
-def plan(input_dir: str, policy: str, output: str | None):
+def plan(input_dir: str, policy: str, output: str | None) -> None:
     """Plan a certification job from input directory."""
     from datetime import datetime
 
@@ -82,7 +83,7 @@ def plan(input_dir: str, policy: str, output: str | None):
 
 @cli.command()
 @click.argument("job_spec", type=click.Path(exists=True))
-def run(job_spec: str):
+def run(job_spec: str) -> None:
     """Run a certification job from spec file."""
     import httpx
 
@@ -112,7 +113,7 @@ def run(job_spec: str):
         _run_local_certification(spec)
 
 
-def _run_local_certification(spec: dict):
+def _run_local_certification(spec: dict[str, Any]) -> None:
     """Run certification locally without server."""
     from certifier.bundle import create_bundle
     from certifier.constants import Severity
@@ -200,7 +201,7 @@ def _run_local_certification(spec: dict):
 @click.argument("claims_file", type=click.Path(exists=True))
 @click.option("--policy", "-p", default="silver", help="Policy ID or file path")
 @click.option("--output", "-o", default=None, help="Output directory")
-def certify(claims_file: str, policy: str, output: str | None):
+def certify(claims_file: str, policy: str, output: str | None) -> None:
     """Certify claims from a JSONL file."""
     from certifier.models import NumericClaim
 
@@ -225,7 +226,7 @@ def certify(claims_file: str, policy: str, output: str | None):
 @click.argument("bundle_path", type=click.Path(exists=True))
 @click.option("--check-signature/--no-check-signature", default=True)
 @click.option("--check-scope-lock/--no-check-scope-lock", default=True)
-def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool):
+def verify(bundle_path: str, check_signature: bool, check_scope_lock: bool) -> None:
     """Verify a directory or a safely isolated bundle tarball."""
     import tarfile
     from tempfile import TemporaryDirectory
@@ -286,7 +287,7 @@ def _extract_verified_bundle(archive_path: Path, temporary_root: Path) -> Path:
     return temporary_root / expected_name
 
 
-def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock: bool):
+def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock: bool) -> None:
     from certifier.bundle import claims_payload_problems, load_bundle
     from certifier.models import ScopeLock
     from certifier.signing import verify_signature
@@ -299,7 +300,7 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
 
     manifest = bundle_data["manifest"]
     errors = claims_payload_problems(bundle_path, manifest)
-    warnings = []
+    warnings: list[str] = []
 
     # Schema check
     console.print("[bold]Schema validation...[/bold]")
@@ -375,12 +376,12 @@ def _verify_directory(bundle_path: Path, check_signature: bool, check_scope_lock
 @cli.command()
 @click.argument("bundle_path", type=click.Path(exists=True))
 @click.option("--deep", is_flag=True, help="Run deep audit")
-def audit(bundle_path: str, deep: bool):
+def audit(bundle_path: str, deep: bool) -> None:
     """Run audit on a bundle."""
     from certifier.bundle import load_bundle
 
-    bundle_path = Path(bundle_path)
-    bundle_data = load_bundle(bundle_path)
+    bundle_dir = Path(bundle_path)
+    bundle_data = load_bundle(bundle_dir)
 
     manifest = bundle_data["manifest"]
     claims = bundle_data.get("claims", [])
@@ -410,12 +411,12 @@ def audit(bundle_path: str, deep: bool):
 
 
 @cli.group()
-def pack():
+def pack() -> None:
     """Domain pack commands."""
 
 
 @pack.command("test")
-def pack_test():
+def pack_test() -> None:
     """Run conformance fixtures for domain packs."""
     console.print("[bold]Running conformance tests...[/bold]")
 
@@ -450,7 +451,7 @@ def pack_test():
 
 @cli.command()
 @click.option("--output", "-o", default="keys", help="Output directory")
-def keygen(output: str):
+def keygen(output: str) -> None:
     """Generate Ed25519 keypair."""
     from certifier.signing import save_keypair
 
@@ -477,7 +478,7 @@ def keygen(output: str):
 
 
 @cli.group()
-def memory():
+def memory() -> None:
     """Memory subsystem commands."""
 
 
@@ -487,7 +488,7 @@ def memory():
 @click.option(
     "--type", "memory_type", default="note", type=click.Choice(["note", "decision", "runbook"])
 )
-def memory_remember(text: str, tags: str, memory_type: str):
+def memory_remember(text: str, tags: str, memory_type: str) -> None:
     """Remember a piece of information."""
     from memory.commands import MemoryCommands
 
@@ -505,7 +506,7 @@ def memory_remember(text: str, tags: str, memory_type: str):
 @click.argument("query")
 @click.option("--pack", is_flag=True, help="Return packed context")
 @click.option("--limit", "-n", default=10, help="Maximum results")
-def memory_recall(query: str, pack: bool, limit: int):
+def memory_recall(query: str, pack: bool, limit: int) -> None:
     """Recall memories matching a query."""
     from memory.commands import MemoryCommands
 
@@ -529,7 +530,7 @@ def memory_recall(query: str, pack: bool, limit: int):
 @memory.command("forget")
 @click.option("--id", "item_id", default=None, help="Item ID to forget")
 @click.option("--query", "-q", default=None, help="Query to match items")
-def memory_forget(item_id: str | None, query: str | None):
+def memory_forget(item_id: str | None, query: str | None) -> None:
     """Forget memory items."""
     from memory.commands import MemoryCommands
 
@@ -545,7 +546,7 @@ def memory_forget(item_id: str | None, query: str | None):
 
 @memory.command("wipe")
 @click.option("--yes", is_flag=True, help="Confirm wipe")
-def memory_wipe(yes: bool):
+def memory_wipe(yes: bool) -> None:
     """Wipe all memory data."""
     from memory.commands import MemoryCommands
 
@@ -563,7 +564,7 @@ def memory_wipe(yes: bool):
 
 
 @memory.command("profile")
-def memory_profile():
+def memory_profile() -> None:
     """Show memory profile and stats."""
     from memory.commands import MemoryCommands
 
@@ -596,7 +597,7 @@ def memory_profile():
 @memory.command("index-codebase")
 @click.option("--path", "-p", default=".", help="Path to codebase")
 @click.option("--max-files", default=400, help="Maximum files to index")
-def memory_index_codebase(path: str, max_files: int):
+def memory_index_codebase(path: str, max_files: int) -> None:
     """Index a codebase into memory."""
     from memory.commands import MemoryCommands
 
@@ -615,7 +616,7 @@ def memory_index_codebase(path: str, max_files: int):
 @memory.command("compact")
 @click.option("--strategy", default="rolling", type=click.Choice(["rolling", "threshold"]))
 @click.option("--max-age-days", default=30, help="Max age for rolling strategy")
-def memory_compact(strategy: str, max_age_days: int):
+def memory_compact(strategy: str, max_age_days: int) -> None:
     """Compact memory by summarizing old items."""
     from memory.commands import MemoryCommands
 

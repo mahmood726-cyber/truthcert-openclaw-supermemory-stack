@@ -98,3 +98,11 @@ Thumbs.db
 .venv/
 node_modules/
 PROGRESS.md
+# === Sentinel hook output (auto-added by install) ===
+STUCK_FAILURES.md
+STUCK_FAILURES.jsonl
+sentinel-findings.md
+sentinel-findings.jsonl
+sentinel-findings.sarif
+review-findings.md
+review-findings.jsonl

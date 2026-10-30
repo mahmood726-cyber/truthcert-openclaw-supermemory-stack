@@ -144,7 +144,7 @@ class PRISMAFlowGenerator:
     Following the PRISMA 2020 statement template.
     """
 
-    def __init__(self, config: PRISMAConfig | None = None):
+    def __init__(self, config: PRISMAConfig | None = None) -> None:
         self.config = config or PRISMAConfig()
 
     def generate(self, data: PRISMAFlowData) -> str:

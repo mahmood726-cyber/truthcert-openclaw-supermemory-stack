@@ -67,7 +67,7 @@ class NMAValidator(Validator):
         ClaimType.NMA_EFFECTIVE_SAMPLE_SIZE,
     }
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         params = config.params if config else {}
         self.thresholds = {**NMA_THRESHOLDS, **params.get("thresholds", {})}
@@ -80,8 +80,8 @@ class NMAValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate NMA claims."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
 
         # Filter to NMA claims
@@ -129,10 +129,12 @@ class NMAValidator(Validator):
             },
         )
 
-    def _validate_nma_claim(self, claim: NumericClaim) -> tuple[list[dict], list[dict]]:
+    def _validate_nma_claim(
+        self, claim: NumericClaim
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate a single NMA claim."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         value = claim.value
         claim_id = claim.claim_id
@@ -263,14 +265,14 @@ class NMAValidator(Validator):
 
         return errors, warnings
 
-    def _check_transitivity(self, relative_effects: list[NumericClaim]) -> list[dict]:
+    def _check_transitivity(self, relative_effects: list[NumericClaim]) -> list[dict[str, Any]]:
         """
         Check transitivity assumption in network.
 
         For claims A vs B, B vs C, and A vs C, check if:
         log(A vs C) ≈ log(A vs B) + log(B vs C) for ratio measures
         """
-        warnings = []
+        warnings: list[dict[str, Any]] = []
 
         # Extract comparison pairs from metadata
         comparisons = {}
@@ -287,10 +289,10 @@ class NMAValidator(Validator):
             treatments.add(a)
             treatments.add(b)
 
-        treatments = list(treatments)
-        for i, a in enumerate(treatments):
-            for j, b in enumerate(treatments[i + 1 :], i + 1):
-                for c in treatments[j + 1 :]:
+        treatment_list = list(treatments)
+        for i, a in enumerate(treatment_list):
+            for j, b in enumerate(treatment_list[i + 1 :], i + 1):
+                for c in treatment_list[j + 1 :]:
                     # Check if we have all three comparisons
                     ab = comparisons.get((a, b)) or comparisons.get((b, a))
                     bc = comparisons.get((b, c)) or comparisons.get((c, b))
@@ -377,7 +379,7 @@ class PRISMANMAValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate PRISMA-NMA compliance."""
-        warnings = []
+        warnings: list[dict[str, Any]] = []
 
         # Check scope_lock metadata for PRISMA-NMA items
         prisma_metadata = scope_lock.metadata.get("prisma_nma", {})

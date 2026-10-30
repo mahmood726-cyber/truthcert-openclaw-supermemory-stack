@@ -38,7 +38,7 @@ class EvidenceScheme:
     """Configuration for an allowed evidence scheme."""
 
     name: str
-    pattern: re.Pattern
+    pattern: re.Pattern[str]
     requires_hash: bool = True
     allowed_profiles: list[CertificationProfile] = field(
         default_factory=lambda: [
@@ -166,7 +166,7 @@ class EvidenceAllowlistValidator(Validator):
     description = "Validates evidence URIs against approved schemes"
     default_severity = Severity.BLOCK
 
-    def __init__(self, config: ValidatorConfig | None = None):
+    def __init__(self, config: ValidatorConfig | None = None) -> None:
         super().__init__(config)
         self.schemes = {s.name: s for s in ALLOWED_SCHEMES}
         self.trusted_domains = set(TRUSTED_DOMAINS)
@@ -190,8 +190,8 @@ class EvidenceAllowlistValidator(Validator):
         context: dict[str, Any],
     ) -> ValidatorResult:
         """Validate all evidence URIs."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
         validated_count = 0
         profile = scope_lock.profile
 
@@ -264,10 +264,10 @@ class EvidenceAllowlistValidator(Validator):
         profile: CertificationProfile,
         claim_id: str,
         evidence_index: int,
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate a single URI against the allowlist."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         # Extract scheme
         if ":" not in uri:
@@ -340,10 +340,10 @@ class EvidenceAllowlistValidator(Validator):
         uri: str,
         claim_id: str,
         evidence_index: int,
-    ) -> tuple[list[dict], list[dict]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         """Validate HTTPS URL domain."""
-        errors = []
-        warnings = []
+        errors: list[dict[str, Any]] = []
+        warnings: list[dict[str, Any]] = []
 
         try:
             parsed = urlparse(uri)
