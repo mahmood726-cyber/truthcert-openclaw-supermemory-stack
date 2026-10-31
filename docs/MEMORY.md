@@ -201,3 +201,16 @@ result = cmd.recall_memories("search query", pack=True)
 # Index codebase
 result = cmd.index_codebase(path=".", max_files=400)
 ```
+
+### Project-scoped memory state fingerprints
+
+The `db_hash` supplied in recall and context provenance is a **noncertifying**
+SHA-256 fingerprint of the active records in that backend's selected project.
+The v2 calculation covers persisted source/provenance metadata, sensitivity,
+retention, timestamps, content and identity; modifying these fields invalidates
+the fingerprint even when memory text and its historical content hash are
+unchanged. Prior v1 short fingerprints are not interchangeable with v2 full
+digests. Other projects' record changes must not alter the selected project's
+fingerprint. This does **not** authenticate the underlying source, prove that
+the memory is current, or establish a signed evidence certificate. Recheck the
+source itself before making any authoritative scientific claim.

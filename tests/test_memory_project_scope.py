@@ -240,3 +240,62 @@ def test_scoped_sql_template_binds_project_values(tmp_path) -> None:
             assert conn.execute(sql, (project_id,)).fetchall() == [(expected,)]
     finally:
         conn.close()
+
+
+def test_project_memory_hash_changes_on_provenance_and_privacy_edits(tmp_path) -> None:
+    """A source-revision or privacy edit must invalidate retained recall provenance."""
+    db = str(tmp_path / "fingerprint.db")
+    a = LocalSQLiteBackend(db, project_id="project-a")
+    b = LocalSQLiteBackend(db, project_id="project-b")
+    item_id = a.store(
+        MemoryItem(text="synthetic revision-bound memory", metadata={"source_revision": "v1"})
+    )
+    original = a.compute_db_hash()
+    other_before = b.compute_db_hash()
+    assert original.startswith("sha256:") and len(original) == len("sha256:") + 64
+
+    b.store(_memory("synthetic independent project-B memory"))
+    assert a.compute_db_hash() == original
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "UPDATE memory_items SET metadata = json_set(metadata, '$.source_revision', 'v2') "
+            "WHERE id = ?",
+            (item_id,),
+        )
+    revised = a.compute_db_hash()
+    assert revised != original
+    assert b.compute_db_hash() != other_before  # Its own insertion is visible.
+
+    b_stable = b.compute_db_hash()
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE memory_items SET sensitivity = 'secret' WHERE id = ?", (item_id,))
+    assert a.compute_db_hash() != revised
+    assert b.compute_db_hash() == b_stable
+
+    before_delete = a.compute_db_hash()
+    assert a.delete(item_id)
+    assert a.compute_db_hash() != before_delete
+
+
+@pytest.mark.asyncio
+async def test_async_memory_hash_matches_sync_and_invalidates_source_revision(tmp_path) -> None:
+    """Async and sync fingerprints encode identical scoped active-row bytes."""
+    db = str(tmp_path / "fingerprint_async.db")
+    a = AsyncLocalSQLiteBackend(db, project_id="project-a")
+    try:
+        item_id = await a.store(
+            MemoryItem(text="synthetic async revision", metadata={"source_revision": "v1"})
+        )
+        sync_backend = LocalSQLiteBackend(db, project_id="project-a")
+        first = await a.compute_db_hash()
+        assert first == sync_backend.compute_db_hash()
+        with sqlite3.connect(db) as conn:
+            conn.execute(
+                "UPDATE memory_items SET retention = ? WHERE id = ?",
+                ('{"keep_days":31,"max_items":10000,"max_bytes":104857600}', item_id),
+            )
+        second = await a.compute_db_hash()
+        assert second != first
+        assert second == sync_backend.compute_db_hash()
+    finally:
+        await a.close()
