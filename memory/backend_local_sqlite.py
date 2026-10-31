@@ -269,6 +269,14 @@ class LocalSQLiteBackend:
                 ]
                 params.extend(f"%{tag}%" for tag in escaped_tags)
 
+            # Derive the total from exactly the same scoped and typed filters.
+            # Snapshot the bound parameters before LIMIT is appended.
+            count_sql = sql.replace(
+                "SELECT m.*, bm25(memory_fts) as rank",
+                "SELECT COUNT(*)",
+                1,
+            )
+            count_params = params.copy()
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
 
@@ -277,18 +285,12 @@ class LocalSQLiteBackend:
 
             items = [self._row_to_item(row) for row in rows]
 
-            # Get total count
-            count_sql = """
-                SELECT COUNT(*) FROM memory_items m
-                JOIN memory_fts ON m.id = memory_fts.id
-                WHERE memory_fts MATCH ?
-            """
-            if not include_deleted:
-                count_sql += " AND m.deleted = 0"
-
-            count_sql += f" AND {scope_clause('m.')}"
-            cursor.execute(count_sql, [safe_query, self.project_id])
-            total = cursor.fetchone()[0]
+            # Total reflects project, type, source and tag filters, not just FTS.
+            cursor.execute(count_sql, count_params)
+            total_row = cursor.fetchone()
+            if total_row is None:
+                raise RuntimeError("Missing aggregate database row")
+            total = total_row[0]
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
