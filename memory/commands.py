@@ -203,7 +203,7 @@ class MemoryCommands:
         Returns:
             Result with status
         """
-        if not confirm:
+        if confirm is not True:
             return {
                 "wiped": False,
                 "error": "Must confirm with --yes flag",
