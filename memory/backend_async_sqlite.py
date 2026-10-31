@@ -350,6 +350,14 @@ class AsyncLocalSQLiteBackend:
                 ]
                 params.extend(f"%{tag}%" for tag in escaped_tags)
 
+            # Derive the total from exactly the same scoped and typed filters.
+            # Snapshot the bound parameters before LIMIT is appended.
+            count_sql = sql.replace(
+                "SELECT m.*, bm25(memory_fts) as rank",
+                "SELECT COUNT(*)",
+                1,
+            )
+            count_params = params.copy()
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
 
@@ -358,17 +366,8 @@ class AsyncLocalSQLiteBackend:
 
             items = [self._row_to_item(row) for row in rows]
 
-            # Get total count
-            count_sql = """
-                SELECT COUNT(*) FROM memory_items m
-                JOIN memory_fts ON m.id = memory_fts.id
-                WHERE memory_fts MATCH ?
-            """
-            if not include_deleted:
-                count_sql += " AND m.deleted = 0"
-
-            count_sql += f" AND {scope_clause('m.')}"
-            await cursor.execute(count_sql, [safe_query, self.project_id])
+            # Total reflects project, type, source and tag filters, not just FTS.
+            await cursor.execute(count_sql, count_params)
             total_row = await cursor.fetchone()
             if total_row is None:
                 raise RuntimeError("Missing aggregate database row")
