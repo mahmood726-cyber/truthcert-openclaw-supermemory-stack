@@ -397,6 +397,7 @@ class AsyncLocalSQLiteBackend:
         offset: int = 0,
         type_filter: MemoryType | None = None,
         include_deleted: bool = False,
+        tags_filter: list[str] | None = None,
     ) -> list[MemoryItem]:
         """List memory items with pagination asynchronously."""
         if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
@@ -421,7 +422,17 @@ class AsyncLocalSQLiteBackend:
                 sql += " AND type = ?"
                 params.append(type_filter.value)
 
-            sql += " ORDER BY created_at_utc DESC LIMIT ? OFFSET ?"
+            if tags_filter:
+                # Exact JSON-array tag membership, before pagination.
+                tag_conditions = " OR ".join(
+                    "EXISTS (SELECT 1 FROM json_each(tags) AS tag WHERE tag.value = ?)"
+                    for _ in tags_filter
+                )
+                sql += f" AND ({tag_conditions})"
+                params.extend(tags_filter)
+
+            # Stable second key keeps equal-timestamp pages deterministic.
+            sql += " ORDER BY created_at_utc DESC, id ASC LIMIT ? OFFSET ?"
             params.extend([limit, offset])
 
             await cursor.execute(sql, params)

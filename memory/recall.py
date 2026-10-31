@@ -157,15 +157,13 @@ class MemoryRecall:
     ) -> list[MemoryItem]:
         """Recall decision items."""
         effective_limit = limit or self.profile.max_recall_results
-        items = self.backend.list_items(
+        # Filter at the database before LIMIT: post-page filtering can
+        # hide older matching decisions when newer unrelated items fill a page.
+        return self.backend.list_items(
             limit=effective_limit,
             type_filter=MemoryType.DECISION,
+            tags_filter=tags_filter,
         )
-
-        if tags_filter:
-            items = [item for item in items if any(tag in item.tags for tag in tags_filter)]
-
-        return items
 
     def recall_codebase_index(self) -> MemoryItem | None:
         """Recall the most recent codebase index."""
