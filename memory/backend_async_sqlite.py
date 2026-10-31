@@ -268,8 +268,7 @@ class AsyncLocalSQLiteBackend:
             cursor = await conn.cursor()
             await cursor.execute(
                 scoped_sql(
-                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 "
-                    "AND /*PROJECT_SCOPE*/"
+                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
                 ),
                 (item_id, self.project_id),
             )
@@ -501,8 +500,7 @@ class AsyncLocalSQLiteBackend:
             # Total items
             await cursor.execute(
                 scoped_sql(
-                    "SELECT COUNT(*) FROM memory_items "
-                    "WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                    "SELECT COUNT(*) FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
                 ),
                 (self.project_id,),
             )
@@ -603,8 +601,7 @@ class AsyncLocalSQLiteBackend:
             if remove_deleted:
                 await cursor.execute(
                     scoped_sql(
-                        "SELECT COUNT(*) FROM memory_items "
-                        "WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
+                        "SELECT COUNT(*) FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
                     ),
                     (self.project_id,),
                 )

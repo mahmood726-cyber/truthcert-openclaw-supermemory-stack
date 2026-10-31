@@ -69,9 +69,7 @@ def test_local_memory_dedup_cannot_alias_distinct_provenance(memory_db, changed_
     exact_duplicate = original.model_copy(deep=True)
     exact_duplicate.id = ""
     assert first_backend.store(exact_duplicate) == first_id
-    assert first_backend.get_stats().total_items == (
-        1 if changed_field == "project" else 2
-    )
+    assert first_backend.get_stats().total_items == (1 if changed_field == "project" else 2)
     assert first_backend.delete(first_id)
     assert second_backend.retrieve(second_id) is not None
 

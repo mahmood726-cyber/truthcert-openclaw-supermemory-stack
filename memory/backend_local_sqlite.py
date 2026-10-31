@@ -191,8 +191,7 @@ class LocalSQLiteBackend:
             cursor = conn.cursor()
             cursor.execute(
                 scoped_sql(
-                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 "
-                    "AND /*PROJECT_SCOPE*/"
+                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
                 ),
                 (item_id, self.project_id),
             )
@@ -403,8 +402,7 @@ class LocalSQLiteBackend:
             # Total items
             cursor.execute(
                 scoped_sql(
-                    "SELECT COUNT(*) FROM memory_items "
-                    "WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                    "SELECT COUNT(*) FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
                 ),
                 (self.project_id,),
             )
@@ -504,8 +502,7 @@ class LocalSQLiteBackend:
             if remove_deleted:
                 cursor.execute(
                     scoped_sql(
-                        "SELECT COUNT(*) FROM memory_items "
-                        "WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
+                        "SELECT COUNT(*) FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
                     ),
                     (self.project_id,),
                 )
