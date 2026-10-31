@@ -46,11 +46,19 @@ class MemoryCommands:
         self,
         db_path: str | None = None,
         profile: MemoryProfile | None = None,
+        *,
+        project_id: str | None = None,
     ) -> None:
         self.db_path = db_path or get_default_db_path()
         self.profile = profile or get_default_profile()
+        # The environment is trusted process configuration, not request data.
+        self.project_id = (
+            project_id
+            if project_id is not None
+            else os.environ.get("TRUTHCERT_PROJECT_ID", "__legacy__")
+        )
 
-        self.backend = LocalSQLiteBackend(self.db_path)
+        self.backend = LocalSQLiteBackend(self.db_path, project_id=self.project_id)
         self.redactor = Redactor()
         self.capture = MemoryCapture(self.backend, self.profile, self.redactor)
         self.recall = MemoryRecall(self.backend, self.profile)

@@ -27,6 +27,7 @@ from .schema import (
     RecallResult,
     RetentionPolicy,
 )
+from .scope import enforce_store_scope, scoped_sql, validate_project_id
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
@@ -62,7 +63,10 @@ class AsyncLocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(self, db_path: str = "./memory.db", pool_size: int = 5) -> None:
+    def __init__(
+        self, db_path: str = "./memory.db", pool_size: int = 5, *, project_id: str = "__legacy__"
+    ) -> None:
+        self.project_id = validate_project_id(project_id)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.pool_size = pool_size
@@ -200,6 +204,8 @@ class AsyncLocalSQLiteBackend:
         if not self._initialized:
             await self.initialize()
 
+        enforce_store_scope(item, self.project_id)
+
         # Generate ID if not provided
         if not item.id:
             item.id = str(uuid.uuid4())
@@ -214,9 +220,10 @@ class AsyncLocalSQLiteBackend:
             # Compare every active candidate before reusing an ID, including
             # privacy and retention fields. Keep historical hashes unchanged.
             await cursor.execute(
-                """SELECT * FROM memory_items
-                   WHERE content_hash = ? AND deleted = 0 ORDER BY id""",
-                (content_hash,),
+                scoped_sql("""SELECT * FROM memory_items
+                   WHERE content_hash = ? AND deleted = 0
+                   AND /*PROJECT_SCOPE*/ ORDER BY id"""),
+                (content_hash, self.project_id),
             )
             for existing in await cursor.fetchall():
                 stored = self._row_to_item(existing)
@@ -260,7 +267,10 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
             await cursor.execute(
-                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0", (item_id,)
+                scoped_sql(
+                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
+                (item_id, self.project_id),
             )
             row = await cursor.fetchone()
 
@@ -316,7 +326,8 @@ class AsyncLocalSQLiteBackend:
                 JOIN memory_fts ON m.id = memory_fts.id
                 WHERE memory_fts MATCH ?
             """
-            params: list[Any] = [safe_query]
+            sql += scoped_sql(" AND /*PROJECT_SCOPE*/", alias="m.")
+            params: list[Any] = [safe_query, self.project_id]
 
             if not include_deleted:
                 sql += " AND m.deleted = 0"
@@ -330,16 +341,23 @@ class AsyncLocalSQLiteBackend:
                 params.append(source_filter.value)
 
             if tags_filter:
-                tag_conditions = " OR ".join(["m.tags LIKE ? ESCAPE '\\'" for _ in tags_filter])
+                # Tags are a JSON array. LIKE on serialized JSON can match
+                # substrings inside a different tag (e.g. "mark"/"bookmark").
+                tag_conditions = " OR ".join(
+                    "EXISTS (SELECT 1 FROM json_each(m.tags) AS tag WHERE tag.value = ?)"
+                    for _ in tags_filter
+                )
                 sql += f" AND ({tag_conditions})"
-                # Escape SQL LIKE wildcards properly (don't remove them, escape them)
-                # This allows literal % and _ in tag names
-                escaped_tags = [
-                    tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                    for tag in tags_filter
-                ]
-                params.extend(f"%{tag}%" for tag in escaped_tags)
+                params.extend(tags_filter)
 
+            # Derive the total from exactly the same scoped and typed filters.
+            # Snapshot the bound parameters before LIMIT is appended.
+            count_sql = sql.replace(
+                "SELECT m.*, bm25(memory_fts) as rank",
+                "SELECT COUNT(*)",
+                1,
+            )
+            count_params = params.copy()
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
 
@@ -348,16 +366,8 @@ class AsyncLocalSQLiteBackend:
 
             items = [self._row_to_item(row) for row in rows]
 
-            # Get total count
-            count_sql = """
-                SELECT COUNT(*) FROM memory_items m
-                JOIN memory_fts ON m.id = memory_fts.id
-                WHERE memory_fts MATCH ?
-            """
-            if not include_deleted:
-                count_sql += " AND m.deleted = 0"
-
-            await cursor.execute(count_sql, [safe_query])
+            # Total reflects project, type, source and tag filters, not just FTS.
+            await cursor.execute(count_sql, count_params)
             total_row = await cursor.fetchone()
             if total_row is None:
                 raise RuntimeError("Missing aggregate database row")
@@ -396,8 +406,8 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
 
-            sql = "SELECT * FROM memory_items WHERE 1=1"
-            params: list[Any] = []
+            sql = scoped_sql("SELECT * FROM memory_items WHERE /*PROJECT_SCOPE*/")
+            params: list[Any] = [self.project_id]
 
             if not include_deleted:
                 sql += " AND deleted = 0"
@@ -433,11 +443,17 @@ class AsyncLocalSQLiteBackend:
             cursor = await conn.cursor()
 
             if hard:
-                await cursor.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
+                await cursor.execute(
+                    scoped_sql("DELETE FROM memory_items WHERE id = ? AND /*PROJECT_SCOPE*/"),
+                    (item_id, self.project_id),
+                )
             else:
                 await cursor.execute(
-                    "UPDATE memory_items SET deleted = 1, updated_at_utc = ? WHERE id = ?",
-                    (datetime.now(UTC).isoformat(), item_id),
+                    scoped_sql(
+                        "UPDATE memory_items SET deleted = 1, updated_at_utc = ? "
+                        "WHERE id = ? AND /*PROJECT_SCOPE*/"
+                    ),
+                    (datetime.now(UTC).isoformat(), item_id, self.project_id),
                 )
 
             await conn.commit()
@@ -462,8 +478,11 @@ class AsyncLocalSQLiteBackend:
         conn = await self._get_connection()
         try:
             cursor = await conn.cursor()
-            await cursor.execute("DELETE FROM memory_items")
-            await cursor.execute("DELETE FROM memory_fts")
+            # SQLite table triggers update FTS without removing other scopes.
+            await cursor.execute(
+                scoped_sql("DELETE FROM memory_items WHERE /*PROJECT_SCOPE*/"),
+                (self.project_id,),
+            )
             await conn.commit()
             return True
         finally:
@@ -479,38 +498,52 @@ class AsyncLocalSQLiteBackend:
             cursor = await conn.cursor()
 
             # Total items
-            await cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 0")
+            await cursor.execute(
+                scoped_sql(
+                    "SELECT COUNT(*) FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
+                (self.project_id,),
+            )
             total_row = await cursor.fetchone()
             if total_row is None:
                 raise RuntimeError("Missing aggregate database row")
             total_items = total_row[0]
 
             # Total bytes (approximate)
-            await cursor.execute("SELECT SUM(LENGTH(text)) FROM memory_items WHERE deleted = 0")
+            await cursor.execute(
+                scoped_sql(
+                    "SELECT SUM(LENGTH(text)) FROM memory_items "
+                    "WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
+                (self.project_id,),
+            )
             bytes_row = await cursor.fetchone()
             if bytes_row is None:
                 raise RuntimeError("Missing aggregate database row")
             total_bytes = bytes_row[0] or 0
 
             # By type
-            await cursor.execute("""
-                SELECT type, COUNT(*) FROM memory_items
-                WHERE deleted = 0 GROUP BY type
-            """)
+            await cursor.execute(
+                scoped_sql("""SELECT type, COUNT(*) FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ GROUP BY type"""),
+                (self.project_id,),
+            )
             items_by_type = {row[0]: row[1] for row in await cursor.fetchall()}
 
             # By source
-            await cursor.execute("""
-                SELECT source, COUNT(*) FROM memory_items
-                WHERE deleted = 0 GROUP BY source
-            """)
+            await cursor.execute(
+                scoped_sql("""SELECT source, COUNT(*) FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ GROUP BY source"""),
+                (self.project_id,),
+            )
             items_by_source = {row[0]: row[1] for row in await cursor.fetchall()}
 
             # Date range
-            await cursor.execute("""
-                SELECT MIN(created_at_utc), MAX(created_at_utc)
-                FROM memory_items WHERE deleted = 0
-            """)
+            await cursor.execute(
+                scoped_sql("""SELECT MIN(created_at_utc), MAX(created_at_utc)
+                FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"""),
+                (self.project_id,),
+            )
             dates = await cursor.fetchone()
             if dates is None:
                 raise RuntimeError("Missing aggregate database row")
@@ -534,10 +567,11 @@ class AsyncLocalSQLiteBackend:
         conn = await self._get_connection()
         try:
             cursor = await conn.cursor()
-            await cursor.execute("""
-                SELECT id, content_hash FROM memory_items
-                WHERE deleted = 0 ORDER BY id
-            """)
+            await cursor.execute(
+                scoped_sql("""SELECT id, content_hash FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
+                (self.project_id,),
+            )
             rows = await cursor.fetchall()
 
             content = json.dumps([(r[0], r[1]) for r in rows], sort_keys=True)
@@ -565,12 +599,20 @@ class AsyncLocalSQLiteBackend:
             cursor = await conn.cursor()
 
             if remove_deleted:
-                await cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 1")
+                await cursor.execute(
+                    scoped_sql(
+                        "SELECT COUNT(*) FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
+                    ),
+                    (self.project_id,),
+                )
                 count_row = await cursor.fetchone()
                 if count_row is None:
                     raise RuntimeError("Missing aggregate database row")
                 count = count_row[0]
-                await cursor.execute("DELETE FROM memory_items WHERE deleted = 1")
+                await cursor.execute(
+                    scoped_sql("DELETE FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"),
+                    (self.project_id,),
+                )
 
             # Rebuild FTS
             await cursor.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')")

@@ -22,6 +22,7 @@ from .schema import (
     MemoryType,
     RecallResult,
 )
+from .scope import enforce_store_scope, scoped_sql, validate_project_id
 
 
 class LocalSQLiteBackend:
@@ -35,7 +36,8 @@ class LocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(self, db_path: str = "./memory.db") -> None:
+    def __init__(self, db_path: str = "./memory.db", *, project_id: str = "__legacy__") -> None:
+        self.project_id = validate_project_id(project_id)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -133,6 +135,8 @@ class LocalSQLiteBackend:
         Returns:
             The item ID
         """
+        enforce_store_scope(item, self.project_id)
+
         # Generate ID if not provided
         if not item.id:
             item.id = str(uuid.uuid4())
@@ -146,9 +150,10 @@ class LocalSQLiteBackend:
             # every matching row before reusing an ID: a different project,
             # provenance revision, privacy class, or retention is not a duplicate.
             cursor.execute(
-                """SELECT * FROM memory_items
-                   WHERE content_hash = ? AND deleted = 0 ORDER BY id""",
-                (content_hash,),
+                scoped_sql("""SELECT * FROM memory_items
+                   WHERE content_hash = ? AND deleted = 0
+                   AND /*PROJECT_SCOPE*/ ORDER BY id"""),
+                (content_hash, self.project_id),
             )
             for existing in cursor.fetchall():
                 stored = self._row_to_item(existing)
@@ -184,7 +189,12 @@ class LocalSQLiteBackend:
         """Retrieve a memory item by ID."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM memory_items WHERE id = ? AND deleted = 0", (item_id,))
+            cursor.execute(
+                scoped_sql(
+                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
+                (item_id, self.project_id),
+            )
             row = cursor.fetchone()
 
             if row:
@@ -233,7 +243,8 @@ class LocalSQLiteBackend:
                 JOIN memory_fts ON m.id = memory_fts.id
                 WHERE memory_fts MATCH ?
             """
-            params: list[Any] = [safe_query]
+            sql += scoped_sql(" AND /*PROJECT_SCOPE*/", alias="m.")
+            params: list[Any] = [safe_query, self.project_id]
 
             if not include_deleted:
                 sql += " AND m.deleted = 0"
@@ -247,16 +258,23 @@ class LocalSQLiteBackend:
                 params.append(source_filter.value)
 
             if tags_filter:
-                tag_conditions = " OR ".join(["m.tags LIKE ? ESCAPE '\\'" for _ in tags_filter])
+                # Tags are a JSON array. LIKE on serialized JSON can match
+                # substrings inside a different tag (e.g. "mark"/"bookmark").
+                tag_conditions = " OR ".join(
+                    "EXISTS (SELECT 1 FROM json_each(m.tags) AS tag WHERE tag.value = ?)"
+                    for _ in tags_filter
+                )
                 sql += f" AND ({tag_conditions})"
-                # Escape SQL LIKE wildcards properly (don't remove them, escape them)
-                # This allows literal % and _ in tag names
-                escaped_tags = [
-                    tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                    for tag in tags_filter
-                ]
-                params.extend(f"%{tag}%" for tag in escaped_tags)
+                params.extend(tags_filter)
 
+            # Derive the total from exactly the same scoped and typed filters.
+            # Snapshot the bound parameters before LIMIT is appended.
+            count_sql = sql.replace(
+                "SELECT m.*, bm25(memory_fts) as rank",
+                "SELECT COUNT(*)",
+                1,
+            )
+            count_params = params.copy()
             sql += " ORDER BY rank LIMIT ?"
             params.append(limit)
 
@@ -265,17 +283,12 @@ class LocalSQLiteBackend:
 
             items = [self._row_to_item(row) for row in rows]
 
-            # Get total count
-            count_sql = """
-                SELECT COUNT(*) FROM memory_items m
-                JOIN memory_fts ON m.id = memory_fts.id
-                WHERE memory_fts MATCH ?
-            """
-            if not include_deleted:
-                count_sql += " AND m.deleted = 0"
-
-            cursor.execute(count_sql, [safe_query])
-            total = cursor.fetchone()[0]
+            # Total reflects project, type, source and tag filters, not just FTS.
+            cursor.execute(count_sql, count_params)
+            total_row = cursor.fetchone()
+            if total_row is None:
+                raise RuntimeError("Missing aggregate database row")
+            total = total_row[0]
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -306,8 +319,8 @@ class LocalSQLiteBackend:
         with self._get_connection() as conn:
             cursor = conn.cursor()
 
-            sql = "SELECT * FROM memory_items WHERE 1=1"
-            params: list[Any] = []
+            sql = scoped_sql("SELECT * FROM memory_items WHERE /*PROJECT_SCOPE*/")
+            params: list[Any] = [self.project_id]
 
             if not include_deleted:
                 sql += " AND deleted = 0"
@@ -336,11 +349,17 @@ class LocalSQLiteBackend:
             cursor = conn.cursor()
 
             if hard:
-                cursor.execute("DELETE FROM memory_items WHERE id = ?", (item_id,))
+                cursor.execute(
+                    scoped_sql("DELETE FROM memory_items WHERE id = ? AND /*PROJECT_SCOPE*/"),
+                    (item_id, self.project_id),
+                )
             else:
                 cursor.execute(
-                    "UPDATE memory_items SET deleted = 1, updated_at_utc = ? WHERE id = ?",
-                    (datetime.now(UTC).isoformat(), item_id),
+                    scoped_sql(
+                        "UPDATE memory_items SET deleted = 1, updated_at_utc = ? "
+                        "WHERE id = ? AND /*PROJECT_SCOPE*/"
+                    ),
+                    (datetime.now(UTC).isoformat(), item_id, self.project_id),
                 )
 
             return cursor.rowcount > 0
@@ -366,8 +385,12 @@ class LocalSQLiteBackend:
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM memory_items")
-            cursor.execute("DELETE FROM memory_fts")
+            # The table trigger removes matching FTS rows. Never erase
+            # the shared FTS index, which may contain other projects.
+            cursor.execute(
+                scoped_sql("DELETE FROM memory_items WHERE /*PROJECT_SCOPE*/"),
+                (self.project_id,),
+            )
 
         return True
 
@@ -377,32 +400,46 @@ class LocalSQLiteBackend:
             cursor = conn.cursor()
 
             # Total items
-            cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 0")
+            cursor.execute(
+                scoped_sql(
+                    "SELECT COUNT(*) FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
+                (self.project_id,),
+            )
             total_items = cursor.fetchone()[0]
 
             # Total bytes (approximate)
-            cursor.execute("SELECT SUM(LENGTH(text)) FROM memory_items WHERE deleted = 0")
+            cursor.execute(
+                scoped_sql(
+                    "SELECT SUM(LENGTH(text)) FROM memory_items "
+                    "WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
+                (self.project_id,),
+            )
             total_bytes = cursor.fetchone()[0] or 0
 
             # By type
-            cursor.execute("""
-                SELECT type, COUNT(*) FROM memory_items
-                WHERE deleted = 0 GROUP BY type
-            """)
+            cursor.execute(
+                scoped_sql("""SELECT type, COUNT(*) FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ GROUP BY type"""),
+                (self.project_id,),
+            )
             items_by_type = {row[0]: row[1] for row in cursor.fetchall()}
 
             # By source
-            cursor.execute("""
-                SELECT source, COUNT(*) FROM memory_items
-                WHERE deleted = 0 GROUP BY source
-            """)
+            cursor.execute(
+                scoped_sql("""SELECT source, COUNT(*) FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ GROUP BY source"""),
+                (self.project_id,),
+            )
             items_by_source = {row[0]: row[1] for row in cursor.fetchall()}
 
             # Date range
-            cursor.execute("""
-                SELECT MIN(created_at_utc), MAX(created_at_utc)
-                FROM memory_items WHERE deleted = 0
-            """)
+            cursor.execute(
+                scoped_sql("""SELECT MIN(created_at_utc), MAX(created_at_utc)
+                FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"""),
+                (self.project_id,),
+            )
             dates = cursor.fetchone()
             oldest = datetime.fromisoformat(dates[0]) if dates[0] else None
             newest = datetime.fromisoformat(dates[1]) if dates[1] else None
@@ -421,10 +458,11 @@ class LocalSQLiteBackend:
         """Compute a hash representing current DB state."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, content_hash FROM memory_items
-                WHERE deleted = 0 ORDER BY id
-            """)
+            cursor.execute(
+                scoped_sql("""SELECT id, content_hash FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
+                (self.project_id,),
+            )
             rows = cursor.fetchall()
 
             content = json.dumps([(r[0], r[1]) for r in rows], sort_keys=True)
@@ -462,9 +500,17 @@ class LocalSQLiteBackend:
             cursor = conn.cursor()
 
             if remove_deleted:
-                cursor.execute("SELECT COUNT(*) FROM memory_items WHERE deleted = 1")
+                cursor.execute(
+                    scoped_sql(
+                        "SELECT COUNT(*) FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
+                    ),
+                    (self.project_id,),
+                )
                 count = cursor.fetchone()[0]
-                cursor.execute("DELETE FROM memory_items WHERE deleted = 1")
+                cursor.execute(
+                    scoped_sql("DELETE FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"),
+                    (self.project_id,),
+                )
 
             # Rebuild FTS
             cursor.execute("INSERT INTO memory_fts(memory_fts) VALUES('rebuild')")
