@@ -38,9 +38,7 @@ def test_decision_tags_are_filtered_before_limit_with_project_isolation(tmp_path
     # Former post-LIMIT filter returned [] because the first page was all
     # nonmatching tags. Exact JSON membership also refuses substring aliases.
     recall = MemoryRecall(a, MemoryProfile(name="synthetic"))
-    assert [m.id for m in recall.recall_decisions(limit=1, tags_filter=["keep"])] == [
-        "a-keep"
-    ]
+    assert [m.id for m in recall.recall_decisions(limit=1, tags_filter=["keep"])] == ["a-keep"]
     assert [m.id for m in a.list_items(limit=1, tags_filter=["keep"])] == ["a-keep"]
     assert [m.id for m in b.list_items(limit=1, tags_filter=["keep"])] == ["b-keep"]
     assert a.list_items(limit=2, tags_filter=["missing"]) == []
