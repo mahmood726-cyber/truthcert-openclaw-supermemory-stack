@@ -18,7 +18,6 @@ from typing import Any, Concatenate, ParamSpec, TypeVar
 import aiosqlite
 
 from .fts5_sanitizer import sanitize_fts5_query
-from .scope import enforce_store_scope, scoped_sql, validate_project_id
 from .schema import (
     MemoryItem,
     MemorySensitivity,
@@ -28,6 +27,7 @@ from .schema import (
     RecallResult,
     RetentionPolicy,
 )
+from .scope import enforce_store_scope, scoped_sql, validate_project_id
 
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
