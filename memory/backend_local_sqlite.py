@@ -399,8 +399,7 @@ class LocalSQLiteBackend:
         )
         if hard:
             change_sql = scoped_sql(
-                "DELETE FROM memory_items WHERE id = ? AND deleted = 0 "
-                "AND /*PROJECT_SCOPE*/"
+                "DELETE FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
             )
         else:
             change_sql = scoped_sql(
