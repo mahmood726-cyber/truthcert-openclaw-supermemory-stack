@@ -145,3 +145,50 @@ async def test_async_scoped_search_filtered_totals_match_returned_items(
     finally:
         await a.close()
         await b.close()
+
+
+def test_scoped_tag_membership_is_exact(tmp_path) -> None:
+    """Partial tag names must not appear in scoped recall or totals."""
+    db = str(tmp_path / "exact_tags.db")
+    a = LocalSQLiteBackend(db, project_id="project-a")
+    b = LocalSQLiteBackend(db, project_id="project-b")
+    wanted_id = a.store(
+        MemoryItem(text="scopedtagmatch wanted", tags=["alpha", "100%_done"])
+    )
+    a.store(MemoryItem(text="scopedtagmatch false positive", tags=["alphabet"]))
+    b.store(MemoryItem(text="scopedtagmatch other project", tags=["alpha"]))
+    for tag in ("alpha", "100%_done"):
+        result = a.search("scopedtagmatch", tags_filter=[tag])
+        assert [item.id for item in result.items] == [wanted_id]
+        assert result.total_matches == 1
+    result = a.search("scopedtagmatch", tags_filter=["alp"])
+    assert result.items == []
+    assert result.total_matches == 0
+
+
+@pytest.mark.asyncio
+async def test_async_scoped_tag_membership_is_exact(tmp_path) -> None:
+    """Async tag filtering has the same literal membership contract."""
+    db = str(tmp_path / "exact_tags_async.db")
+    a = AsyncLocalSQLiteBackend(db, project_id="project-a")
+    b = AsyncLocalSQLiteBackend(db, project_id="project-b")
+    try:
+        wanted_id = await a.store(
+            MemoryItem(text="asyncscopedtagmatch wanted", tags=["alpha", "100%_done"])
+        )
+        await a.store(
+            MemoryItem(text="asyncscopedtagmatch false positive", tags=["alphabet"])
+        )
+        await b.store(
+            MemoryItem(text="asyncscopedtagmatch other project", tags=["alpha"])
+        )
+        for tag in ("alpha", "100%_done"):
+            result = await a.search("asyncscopedtagmatch", tags_filter=[tag])
+            assert [item.id for item in result.items] == [wanted_id]
+            assert result.total_matches == 1
+        result = await a.search("asyncscopedtagmatch", tags_filter=["alp"])
+        assert result.items == []
+        assert result.total_matches == 0
+    finally:
+        await a.close()
+        await b.close()
