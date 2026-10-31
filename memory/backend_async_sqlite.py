@@ -18,7 +18,7 @@ from typing import Any, Concatenate, ParamSpec, TypeVar
 import aiosqlite
 
 from .fts5_sanitizer import sanitize_fts5_query
-from .scope import enforce_store_scope, scope_clause, validate_project_id
+from .scope import enforce_store_scope, scoped_sql, validate_project_id
 from .schema import (
     MemoryItem,
     MemorySensitivity,
@@ -220,9 +220,9 @@ class AsyncLocalSQLiteBackend:
             # Compare every active candidate before reusing an ID, including
             # privacy and retention fields. Keep historical hashes unchanged.
             await cursor.execute(
-                f"""SELECT * FROM memory_items
+                scoped_sql("""SELECT * FROM memory_items
                    WHERE content_hash = ? AND deleted = 0
-                   AND {scope_clause()} ORDER BY id""",
+                   AND /*PROJECT_SCOPE*/ ORDER BY id"""),
                 (content_hash, self.project_id),
             )
             for existing in await cursor.fetchall():
@@ -267,8 +267,10 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
             await cursor.execute(
-                f"SELECT * FROM memory_items WHERE id = ? AND deleted = 0 "
-                f"AND {scope_clause()}",
+                scoped_sql(
+                    "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 "
+                    "AND /*PROJECT_SCOPE*/"
+                ),
                 (item_id, self.project_id),
             )
             row = await cursor.fetchone()
@@ -325,7 +327,7 @@ class AsyncLocalSQLiteBackend:
                 JOIN memory_fts ON m.id = memory_fts.id
                 WHERE memory_fts MATCH ?
             """
-            sql += f" AND {scope_clause('m.')}"
+            sql += scoped_sql(" AND /*PROJECT_SCOPE*/", alias="m.")
             params: list[Any] = [safe_query, self.project_id]
 
             if not include_deleted:
@@ -405,7 +407,7 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
 
-            sql = f"SELECT * FROM memory_items WHERE {scope_clause()}"
+            sql = scoped_sql("SELECT * FROM memory_items WHERE /*PROJECT_SCOPE*/")
             params: list[Any] = [self.project_id]
 
             if not include_deleted:
@@ -443,13 +445,15 @@ class AsyncLocalSQLiteBackend:
 
             if hard:
                 await cursor.execute(
-                    f"DELETE FROM memory_items WHERE id = ? AND {scope_clause()}",
+                    scoped_sql("DELETE FROM memory_items WHERE id = ? AND /*PROJECT_SCOPE*/"),
                     (item_id, self.project_id),
                 )
             else:
                 await cursor.execute(
-                    f"UPDATE memory_items SET deleted = 1, updated_at_utc = ? "
-                    f"WHERE id = ? AND {scope_clause()}",
+                    scoped_sql(
+                        "UPDATE memory_items SET deleted = 1, updated_at_utc = ? "
+                        "WHERE id = ? AND /*PROJECT_SCOPE*/"
+                    ),
                     (datetime.now(UTC).isoformat(), item_id, self.project_id),
                 )
 
@@ -477,7 +481,7 @@ class AsyncLocalSQLiteBackend:
             cursor = await conn.cursor()
             # SQLite table triggers update FTS without removing other scopes.
             await cursor.execute(
-                f"DELETE FROM memory_items WHERE {scope_clause()}",
+                scoped_sql("DELETE FROM memory_items WHERE /*PROJECT_SCOPE*/"),
                 (self.project_id,),
             )
             await conn.commit()
@@ -496,8 +500,10 @@ class AsyncLocalSQLiteBackend:
 
             # Total items
             await cursor.execute(
-                f"SELECT COUNT(*) FROM memory_items "
-                f"WHERE deleted = 0 AND {scope_clause()}",
+                scoped_sql(
+                    "SELECT COUNT(*) FROM memory_items "
+                    "WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
                 (self.project_id,),
             )
             total_row = await cursor.fetchone()
@@ -507,8 +513,10 @@ class AsyncLocalSQLiteBackend:
 
             # Total bytes (approximate)
             await cursor.execute(
-                f"SELECT SUM(LENGTH(text)) FROM memory_items "
-                f"WHERE deleted = 0 AND {scope_clause()}",
+                scoped_sql(
+                    "SELECT SUM(LENGTH(text)) FROM memory_items "
+                    "WHERE deleted = 0 AND /*PROJECT_SCOPE*/"
+                ),
                 (self.project_id,),
             )
             bytes_row = await cursor.fetchone()
@@ -518,24 +526,24 @@ class AsyncLocalSQLiteBackend:
 
             # By type
             await cursor.execute(
-                f"""SELECT type, COUNT(*) FROM memory_items
-                WHERE deleted = 0 AND {scope_clause()} GROUP BY type""",
+                scoped_sql("""SELECT type, COUNT(*) FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ GROUP BY type"""),
                 (self.project_id,),
             )
             items_by_type = {row[0]: row[1] for row in await cursor.fetchall()}
 
             # By source
             await cursor.execute(
-                f"""SELECT source, COUNT(*) FROM memory_items
-                WHERE deleted = 0 AND {scope_clause()} GROUP BY source""",
+                scoped_sql("""SELECT source, COUNT(*) FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ GROUP BY source"""),
                 (self.project_id,),
             )
             items_by_source = {row[0]: row[1] for row in await cursor.fetchall()}
 
             # Date range
             await cursor.execute(
-                f"""SELECT MIN(created_at_utc), MAX(created_at_utc)
-                FROM memory_items WHERE deleted = 0 AND {scope_clause()}""",
+                scoped_sql("""SELECT MIN(created_at_utc), MAX(created_at_utc)
+                FROM memory_items WHERE deleted = 0 AND /*PROJECT_SCOPE*/"""),
                 (self.project_id,),
             )
             dates = await cursor.fetchone()
@@ -562,8 +570,8 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
             await cursor.execute(
-                f"""SELECT id, content_hash FROM memory_items
-                WHERE deleted = 0 AND {scope_clause()} ORDER BY id""",
+                scoped_sql("""SELECT id, content_hash FROM memory_items
+                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
                 (self.project_id,),
             )
             rows = await cursor.fetchall()
@@ -594,8 +602,10 @@ class AsyncLocalSQLiteBackend:
 
             if remove_deleted:
                 await cursor.execute(
-                    f"SELECT COUNT(*) FROM memory_items "
-                    f"WHERE deleted = 1 AND {scope_clause()}",
+                    scoped_sql(
+                        "SELECT COUNT(*) FROM memory_items "
+                        "WHERE deleted = 1 AND /*PROJECT_SCOPE*/"
+                    ),
                     (self.project_id,),
                 )
                 count_row = await cursor.fetchone()
@@ -603,7 +613,7 @@ class AsyncLocalSQLiteBackend:
                     raise RuntimeError("Missing aggregate database row")
                 count = count_row[0]
                 await cursor.execute(
-                    f"DELETE FROM memory_items WHERE deleted = 1 AND {scope_clause()}",
+                    scoped_sql("DELETE FROM memory_items WHERE deleted = 1 AND /*PROJECT_SCOPE*/"),
                     (self.project_id,),
                 )
 
