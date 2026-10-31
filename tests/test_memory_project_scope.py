@@ -5,7 +5,7 @@ import pytest
 from memory.backend_async_sqlite import AsyncLocalSQLiteBackend
 from memory.backend_local_sqlite import LocalSQLiteBackend
 from memory.commands import MemoryCommands
-from memory.schema import MemoryItem
+from memory.schema import MemoryItem, MemoryType
 
 
 def _memory(text: str) -> MemoryItem:
@@ -98,3 +98,37 @@ def test_old_unlabelled_rows_remain_legacy_only(tmp_path) -> None:
     assert legacy.retrieve(old_id) is not None
     assert a.wipe(confirm=True)
     assert legacy.retrieve(old_id) is not None
+
+def test_scoped_search_filtered_totals_match_returned_items(tmp_path) -> None:
+    """Project, type and tag predicates must match both result and total queries."""
+    db = str(tmp_path / "scoped_counts.db")
+    a = LocalSQLiteBackend(db, project_id="project-a")
+    b = LocalSQLiteBackend(db, project_id="project-b")
+    wanted_id = a.store(MemoryItem(text="sharedcount wanted", tags=["keep"]))
+    a.store(MemoryItem(type=MemoryType.DECISION, text="sharedcount other", tags=["omit"]))
+    b.store(MemoryItem(text="sharedcount different project", tags=["keep"]))
+    for kwargs in ({"type_filter": MemoryType.NOTE}, {"tags_filter": ["keep"]}):
+        result = a.search("sharedcount", **kwargs)
+        assert [item.id for item in result.items] == [wanted_id]
+        assert result.total_matches == len(result.items) == 1
+
+
+@pytest.mark.asyncio
+async def test_async_scoped_search_filtered_totals_match_returned_items(tmp_path) -> None:
+    """The async backend must use the same filters for counts and results."""
+    db = str(tmp_path / "scoped_counts_async.db")
+    a = AsyncLocalSQLiteBackend(db, project_id="project-a")
+    b = AsyncLocalSQLiteBackend(db, project_id="project-b")
+    try:
+        wanted_id = await a.store(MemoryItem(text="asyncsharedcount wanted", tags=["keep"]))
+        await a.store(
+            MemoryItem(type=MemoryType.DECISION, text="asyncsharedcount other", tags=["omit"])
+        )
+        await b.store(MemoryItem(text="asyncsharedcount different project", tags=["keep"]))
+        for kwargs in ({"type_filter": MemoryType.NOTE}, {"tags_filter": ["keep"]}):
+            result = await a.search("asyncsharedcount", **kwargs)
+            assert [item.id for item in result.items] == [wanted_id]
+            assert result.total_matches == len(result.items) == 1
+    finally:
+        await a.close()
+        await b.close()
