@@ -1,5 +1,7 @@
 """Synthetic project isolation at all memory read and mutation boundaries."""
 
+import sqlite3
+
 import pytest
 
 from memory.backend_async_sqlite import AsyncLocalSQLiteBackend
@@ -207,8 +209,6 @@ def test_scoped_sql_template_rejects_missing_repeated_or_untrusted_scope() -> No
 
 def test_scoped_sql_template_binds_project_values(tmp_path) -> None:
     """Template expansion preserves one value placeholder and legacy separation."""
-    import sqlite3
-
     conn = sqlite3.connect(str(tmp_path / "template_scopes.db"))
     try:
         conn.execute("CREATE TABLE memory_items (id TEXT, metadata TEXT)")
