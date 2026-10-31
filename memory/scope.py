@@ -43,3 +43,16 @@ def scope_clause(alias: str = "") -> str:
         f"THEN '{LEGACY_PROJECT_ID}' "
         f"ELSE json_extract({column}, '$.project_id') END) = ?"
     )
+
+
+def scoped_sql(template: str, *, alias: str = "") -> str:
+    """Fill exactly one vetted project predicate in a constant SQL template.
+
+    SQL structure and column aliases come only from checked-in code; every
+    project identifier is passed separately through SQLite bound parameters.
+    Refuse omitted/duplicate predicates rather than constructing an unscoped query.
+    """
+    marker = "/*PROJECT_SCOPE*/"
+    if template.count(marker) != 1:
+        raise ValueError("scoped SQL requires exactly one project predicate")
+    return template.replace(marker, scope_clause(alias))
