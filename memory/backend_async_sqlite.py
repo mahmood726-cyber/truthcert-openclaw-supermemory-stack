@@ -317,6 +317,8 @@ class AsyncLocalSQLiteBackend:
 
         conn = await self._get_connection()
         try:
+            # An explicit read transaction freezes hits, total and fingerprint.
+            await conn.execute("BEGIN")
             cursor = await conn.cursor()
 
             # Build query
@@ -372,6 +374,7 @@ class AsyncLocalSQLiteBackend:
             if total_row is None:
                 raise RuntimeError("Missing aggregate database row")
             total = total_row[0]
+            db_hash = await self._compute_db_hash_on_connection(conn)
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -380,10 +383,12 @@ class AsyncLocalSQLiteBackend:
                 query=query,
                 total_matches=total,
                 execution_time_ms=elapsed_ms,
-                db_hash=await self.compute_db_hash(),
+                db_hash=db_hash,
                 selection_rule=f"FTS5 match (sanitized), limit={limit}",
             )
         finally:
+            # Release snapshot before pooling, including after an exception.
+            await conn.rollback()
             await self._return_connection(conn)
 
     async def list_items(
@@ -495,6 +500,7 @@ class AsyncLocalSQLiteBackend:
 
         conn = await self._get_connection()
         try:
+            await conn.execute("BEGIN")
             cursor = await conn.cursor()
 
             # Total items
@@ -549,6 +555,7 @@ class AsyncLocalSQLiteBackend:
                 raise RuntimeError("Missing aggregate database row")
             oldest = datetime.fromisoformat(dates[0]) if dates[0] else None
             newest = datetime.fromisoformat(dates[1]) if dates[1] else None
+            db_hash = await self._compute_db_hash_on_connection(conn)
 
             return MemoryStats(
                 total_items=total_items,
@@ -557,32 +564,36 @@ class AsyncLocalSQLiteBackend:
                 items_by_source=items_by_source,
                 oldest_item_date=oldest,
                 newest_item_date=newest,
-                db_hash=await self.compute_db_hash(),
+                db_hash=db_hash,
             )
         finally:
+            await conn.rollback()
             await self._return_connection(conn)
 
+    async def _compute_db_hash_on_connection(self, conn: aiosqlite.Connection) -> str:
+        """Hash project-scoped rows using the caller's SQLite read snapshot."""
+        cursor = await conn.cursor()
+        await cursor.execute(
+            scoped_sql("""SELECT id, created_at_utc, updated_at_utc, type, source,
+                   tags, text, metadata, sensitivity, retention, content_hash
+            FROM memory_items
+            WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
+            (self.project_id,),
+        )
+        rows = await cursor.fetchall()
+        content = json.dumps(
+            {"fingerprint_version": 2, "active_rows": [tuple(row) for row in rows]},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        # Unsigned memory state only; never authenticates an external source.
+        return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+
     async def compute_db_hash(self) -> str:
-        """Compute a hash representing current DB state asynchronously."""
+        """Compute the current unsigned project-scoped memory state fingerprint."""
         conn = await self._get_connection()
         try:
-            cursor = await conn.cursor()
-            await cursor.execute(
-                scoped_sql("""SELECT id, created_at_utc, updated_at_utc, type, source,
-                       tags, text, metadata, sensitivity, retention, content_hash
-                FROM memory_items
-                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
-                (self.project_id,),
-            )
-            rows = await cursor.fetchall()
-
-            # Keep exact parity with the synchronous v2 fingerprint contract.
-            content = json.dumps(
-                {"fingerprint_version": 2, "active_rows": [tuple(row) for row in rows]},
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+            return await self._compute_db_hash_on_connection(conn)
         finally:
             await self._return_connection(conn)
 
