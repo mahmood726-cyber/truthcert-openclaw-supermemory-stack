@@ -95,9 +95,7 @@ def test_profile_excludes_secret_before_pagination_and_keeps_scoped_context(tmp_
     assert a.list_items(limit=1, type_filter=MemoryType.DECISION)[0].id.startswith(
         "secret-decision-"
     )
-    filtered = a.list_items(
-        limit=1, type_filter=MemoryType.DECISION, exclude_secret=True
-    )
+    filtered = a.list_items(limit=1, type_filter=MemoryType.DECISION, exclude_secret=True)
     assert [item.id for item in filtered] == ["safe-decision"]
     assert [item.id for item in b.list_items(exclude_secret=True)] == []
 
@@ -123,9 +121,7 @@ def test_profile_rejects_unknown_persisted_sensitivity_before_pagination(tmp_pat
     with sqlite3.connect(path) as conn:
         conn.execute("UPDATE memory_items SET sensitivity = 'unknown' WHERE id = 'corrupt'")
     result = MemoryRecall(backend, MemoryProfile(name="test")).get_profile_summary()
-    assert [d["text"] for d in result["recent_decisions"]] == [
-        "Synthetic safe classified memory"
-    ]
+    assert [d["text"] for d in result["recent_decisions"]] == ["Synthetic safe classified memory"]
 
 
 @pytest.mark.asyncio
@@ -137,9 +133,7 @@ async def test_async_profile_safe_filter_keeps_scope_and_limit(tmp_path):
     await foreign.initialize()
     now = datetime(2026, 10, 31, tzinfo=UTC)
     try:
-        await backend.store(
-            _item("safe", MemoryType.DECISION, MemorySensitivity.PUBLIC, now)
-        )
+        await backend.store(_item("safe", MemoryType.DECISION, MemorySensitivity.PUBLIC, now))
         await backend.store(
             _item(
                 "secret",
@@ -148,9 +142,7 @@ async def test_async_profile_safe_filter_keeps_scope_and_limit(tmp_path):
                 now + timedelta(minutes=1),
             )
         )
-        await foreign.store(
-            _item("foreign", MemoryType.DECISION, MemorySensitivity.PRIVATE, now)
-        )
+        await foreign.store(_item("foreign", MemoryType.DECISION, MemorySensitivity.PRIVATE, now))
         normal = await backend.list_items(limit=1, type_filter=MemoryType.DECISION)
         assert [m.id for m in normal] == ["secret"]
         filtered = await backend.list_items(
