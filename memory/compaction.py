@@ -8,6 +8,7 @@ from typing import Any
 from .backend_local_sqlite import LocalSQLiteBackend
 from .schema import (
     MemoryItem,
+    MemorySensitivity,
     MemorySource,
     MemoryType,
 )
@@ -92,6 +93,7 @@ class MemoryCompactor:
                 summary_item = MemoryItem(
                     type=MemoryType.SUMMARY,
                     source=MemorySource.SYSTEM,
+                    sensitivity=self._summary_sensitivity(window_items),
                     text=summary_text,
                     tags=["compaction", window_key],
                     metadata={
@@ -166,6 +168,7 @@ class MemoryCompactor:
             summary_item = MemoryItem(
                 type=MemoryType.SUMMARY,
                 source=MemorySource.SYSTEM,
+                sensitivity=self._summary_sensitivity(items_to_remove),
                 text=summary_text,
                 tags=["compaction", "threshold"],
                 metadata={
@@ -211,6 +214,19 @@ class MemoryCompactor:
             "oldest_item": stats.oldest_item_date.isoformat() if stats.oldest_item_date else None,
             "newest_item": stats.newest_item_date.isoformat() if stats.newest_item_date else None,
         }
+
+    @staticmethod
+    def _summary_sensitivity(items: list[MemoryItem]) -> MemorySensitivity:
+        """Never downgrade a derived summary below its inputs or the old PRIVATE default.
+
+        Compaction is noncertifying planning context. It may copy excerpts from
+        protected inputs, so their SECRET classification must survive derivation.
+        """
+        if not items:
+            raise ValueError("Cannot derive a summary from an empty source list")
+        if any(item.sensitivity == MemorySensitivity.SECRET for item in items):
+            return MemorySensitivity.SECRET
+        return MemorySensitivity.PRIVATE
 
     def _create_summary(self, items: list[MemoryItem]) -> str:
         """
