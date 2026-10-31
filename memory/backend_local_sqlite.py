@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any
 
 from .fts5_sanitizer import sanitize_fts5_query
-from .scope import enforce_store_scope, scoped_sql, validate_project_id
 from .schema import (
     MemoryItem,
     MemorySensitivity,
@@ -23,6 +22,7 @@ from .schema import (
     MemoryType,
     RecallResult,
 )
+from .scope import enforce_store_scope, scoped_sql, validate_project_id
 
 
 class LocalSQLiteBackend:
@@ -36,9 +36,7 @@ class LocalSQLiteBackend:
     - Content-addressed deduplication
     """
 
-    def __init__(
-        self, db_path: str = "./memory.db", *, project_id: str = "__legacy__"
-    ) -> None:
+    def __init__(self, db_path: str = "./memory.db", *, project_id: str = "__legacy__") -> None:
         self.project_id = validate_project_id(project_id)
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
