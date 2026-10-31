@@ -568,14 +568,21 @@ class AsyncLocalSQLiteBackend:
         try:
             cursor = await conn.cursor()
             await cursor.execute(
-                scoped_sql("""SELECT id, content_hash FROM memory_items
+                scoped_sql("""SELECT id, created_at_utc, updated_at_utc, type, source,
+                       tags, text, metadata, sensitivity, retention, content_hash
+                FROM memory_items
                 WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
                 (self.project_id,),
             )
             rows = await cursor.fetchall()
 
-            content = json.dumps([(r[0], r[1]) for r in rows], sort_keys=True)
-            return f"sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
+            # Keep exact parity with the synchronous v2 fingerprint contract.
+            content = json.dumps(
+                {"fingerprint_version": 2, "active_rows": [tuple(row) for row in rows]},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
         finally:
             await self._return_connection(conn)
 

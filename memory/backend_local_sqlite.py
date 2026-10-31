@@ -459,14 +459,23 @@ class LocalSQLiteBackend:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                scoped_sql("""SELECT id, content_hash FROM memory_items
+                scoped_sql("""SELECT id, created_at_utc, updated_at_utc, type, source,
+                       tags, text, metadata, sensitivity, retention, content_hash
+                FROM memory_items
                 WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
                 (self.project_id,),
             )
             rows = cursor.fetchall()
 
-            content = json.dumps([(r[0], r[1]) for r in rows], sort_keys=True)
-            return f"sha256:{hashlib.sha256(content.encode()).hexdigest()[:16]}"
+            # v2 binds source revisions, sensitivity and retention as well as
+            # content. This is an unsigned, project-scoped memory fingerprint,
+            # never authentication of a source or certification evidence.
+            content = json.dumps(
+                {"fingerprint_version": 2, "active_rows": [tuple(row) for row in rows]},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
 
     def _row_to_item(self, row: sqlite3.Row) -> MemoryItem:
         """Convert a database row to a MemoryItem."""
