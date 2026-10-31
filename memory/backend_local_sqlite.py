@@ -234,6 +234,9 @@ class LocalSQLiteBackend:
         safe_query = sanitize_fts5_query(query)
 
         with self._get_connection() as conn:
+            # One explicit SQLite read transaction binds hits, totals and provenance
+            # to the same snapshot even if another process writes concurrently.
+            conn.execute("BEGIN")
             cursor = conn.cursor()
 
             # Build query
@@ -289,6 +292,7 @@ class LocalSQLiteBackend:
             if total_row is None:
                 raise RuntimeError("Missing aggregate database row")
             total = total_row[0]
+            db_hash = self._compute_db_hash_on_connection(conn)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -297,7 +301,7 @@ class LocalSQLiteBackend:
             query=query,
             total_matches=total,
             execution_time_ms=elapsed_ms,
-            db_hash=self.compute_db_hash(),
+            db_hash=db_hash,
             selection_rule=f"FTS5 match (sanitized), limit={limit}",
         )
 
@@ -397,6 +401,8 @@ class LocalSQLiteBackend:
     def get_stats(self) -> MemoryStats:
         """Get memory statistics."""
         with self._get_connection() as conn:
+            # Keep all statistics and their state fingerprint at one read revision.
+            conn.execute("BEGIN")
             cursor = conn.cursor()
 
             # Total items
@@ -443,6 +449,7 @@ class LocalSQLiteBackend:
             dates = cursor.fetchone()
             oldest = datetime.fromisoformat(dates[0]) if dates[0] else None
             newest = datetime.fromisoformat(dates[1]) if dates[1] else None
+            db_hash = self._compute_db_hash_on_connection(conn)
 
         return MemoryStats(
             total_items=total_items,
@@ -451,31 +458,32 @@ class LocalSQLiteBackend:
             items_by_source=items_by_source,
             oldest_item_date=oldest,
             newest_item_date=newest,
-            db_hash=self.compute_db_hash(),
+            db_hash=db_hash,
         )
 
-    def compute_db_hash(self) -> str:
-        """Compute a hash representing current DB state."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                scoped_sql("""SELECT id, created_at_utc, updated_at_utc, type, source,
-                       tags, text, metadata, sensitivity, retention, content_hash
-                FROM memory_items
-                WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
-                (self.project_id,),
-            )
-            rows = cursor.fetchall()
+    def _compute_db_hash_on_connection(self, conn: sqlite3.Connection) -> str:
+        """Hash project-scoped active rows on the caller's SQLite read snapshot."""
+        cursor = conn.cursor()
+        cursor.execute(
+            scoped_sql("""SELECT id, created_at_utc, updated_at_utc, type, source,
+                   tags, text, metadata, sensitivity, retention, content_hash
+            FROM memory_items
+            WHERE deleted = 0 AND /*PROJECT_SCOPE*/ ORDER BY id"""),
+            (self.project_id,),
+        )
+        rows = cursor.fetchall()
+        content = json.dumps(
+            {"fingerprint_version": 2, "active_rows": [tuple(row) for row in rows]},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        # Unsigned memory state only; never authenticates an external source.
+        return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
 
-            # v2 binds source revisions, sensitivity and retention as well as
-            # content. This is an unsigned, project-scoped memory fingerprint,
-            # never authentication of a source or certification evidence.
-            content = json.dumps(
-                {"fingerprint_version": 2, "active_rows": [tuple(row) for row in rows]},
-                sort_keys=True,
-                separators=(",", ":"),
-            )
-            return f"sha256:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
+    def compute_db_hash(self) -> str:
+        """Compute the current unsigned project-scoped memory state fingerprint."""
+        with self._get_connection() as conn:
+            return self._compute_db_hash_on_connection(conn)
 
     def _row_to_item(self, row: sqlite3.Row) -> MemoryItem:
         """Convert a database row to a MemoryItem."""
