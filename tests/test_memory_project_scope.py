@@ -53,6 +53,25 @@ def test_project_scope_refuses_missing_mismatch_and_explicit_null(tmp_path) -> N
     assert LocalSQLiteBackend(db).retrieve(a_id) is None
 
 
+def test_duplicate_project_scope_keys_fail_closed_for_retrieval_and_recall(tmp_path) -> None:
+    """SQLite and Python disagree on duplicate keys: reject an ambiguous stored label."""
+    db = str(tmp_path / "duplicate_labels.db")
+    project_a = LocalSQLiteBackend(db, project_id="project-a")
+    project_b = LocalSQLiteBackend(db, project_id="project-b")
+    memory_id = project_b.store(_memory("ambiguousscope synthetic private B"))
+    # Deliberate corruption through SQL, not a normal write through MemoryItem.
+    with sqlite3.connect(db) as conn:
+        conn.execute(
+            "UPDATE memory_items SET metadata = ? WHERE id = ?",
+            ('{"project_id":"project-a","project_id":"project-b"}', memory_id),
+        )
+    assert project_a.retrieve(memory_id) is None
+    assert project_b.retrieve(memory_id) is None
+    assert project_a.search("ambiguousscope").items == []
+    assert project_a.search("ambiguousscope").total_matches == 0
+    assert project_a.get_stats().total_items == 0
+
+
 def test_high_level_memory_command_scope_does_not_mix_projects(tmp_path) -> None:
     db = str(tmp_path / "commands.db")
     a = MemoryCommands(db_path=db, project_id="project-a")
@@ -207,6 +226,8 @@ def test_scoped_sql_template_binds_project_values(tmp_path) -> None:
                 ("a", '{"project_id":"project-a"}'),
                 ("b", '{"project_id":"project-b"}'),
                 ("null", '{"project_id":null}'),
+                ("ambiguous-a", '{"project_id":"project-a","project_id":"project-b"}'),
+                ("ambiguous-b", '{"project_id":"project-b","project_id":"project-a"}'),
             ],
         )
         sql = scoped_sql("SELECT id FROM memory_items WHERE /*PROJECT_SCOPE*/")
