@@ -52,10 +52,13 @@ def test_delete_by_query_does_not_silently_stop_at_10000(tmp_path) -> None:
     assert a.get_stats().total_items == 0
     assert b.retrieve(other_id) is not None
     with sqlite3.connect(db) as conn:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM memory_items WHERE id = ? OR id LIKE 'bulk-%'",
-            (seed_id,),
-        ).fetchone()[0] == 0
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM memory_items WHERE id = ? OR id LIKE 'bulk-%'",
+                (seed_id,),
+            ).fetchone()[0]
+            == 0
+        )
 
 
 def test_delete_by_query_refuses_cross_project_and_invalid_scope(tmp_path) -> None:
@@ -76,6 +79,9 @@ def test_delete_by_query_refuses_cross_project_and_invalid_scope(tmp_path) -> No
     assert a.retrieve(own_id) is None
     assert b.retrieve(other_id) is not None
     with sqlite3.connect(db) as conn:
-        assert conn.execute(
-            "SELECT COUNT(*) FROM memory_items WHERE id = ?", (corrupted_id,)
-        ).fetchone()[0] == 1
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM memory_items WHERE id = ?", (corrupted_id,)
+            ).fetchone()[0]
+            == 1
+        )
