@@ -11,7 +11,6 @@ from memory.backend_local_sqlite import LocalSQLiteBackend
 from memory.commands import MemoryCommands
 from memory.schema import MemoryItem
 
-
 UNTRUSTED_CONFIRMATIONS = ("false", "no", "0", 1, ["yes"], {"confirmed": False})
 
 
