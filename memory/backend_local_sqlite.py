@@ -259,15 +259,14 @@ class LocalSQLiteBackend:
                 params.append(source_filter.value)
 
             if tags_filter:
-                tag_conditions = " OR ".join(["m.tags LIKE ? ESCAPE '\\'" for _ in tags_filter])
+                # Tags are a JSON array. LIKE on serialized JSON can match
+                # substrings inside a different tag (e.g. "mark"/"bookmark").
+                tag_conditions = " OR ".join(
+                    "EXISTS (SELECT 1 FROM json_each(m.tags) AS tag WHERE tag.value = ?)"
+                    for _ in tags_filter
+                )
                 sql += f" AND ({tag_conditions})"
-                # Escape SQL LIKE wildcards properly (don't remove them, escape them)
-                # This allows literal % and _ in tag names
-                escaped_tags = [
-                    tag.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-                    for tag in tags_filter
-                ]
-                params.extend(f"%{tag}%" for tag in escaped_tags)
+                params.extend(tags_filter)
 
             # Derive the total from exactly the same scoped and typed filters.
             # Snapshot the bound parameters before LIMIT is appended.
