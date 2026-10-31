@@ -312,6 +312,7 @@ class LocalSQLiteBackend:
         type_filter: MemoryType | None = None,
         include_deleted: bool = False,
         tags_filter: list[str] | None = None,
+        exclude_secret: bool = False,
     ) -> list[MemoryItem]:
         """List memory items with pagination."""
         # SQLite treats LIMIT -1 as unlimited and negative OFFSET as zero.
@@ -333,6 +334,12 @@ class LocalSQLiteBackend:
             if type_filter:
                 sql += " AND type = ?"
                 params.append(type_filter.value)
+
+            if exclude_secret:
+                # Filter before LIMIT. Unknown/corrupt classes must not enter
+                # automatic profile context as if they were non-secret.
+                sql += " AND sensitivity IN (?, ?)"
+                params.extend([MemorySensitivity.PUBLIC.value, MemorySensitivity.PRIVATE.value])
 
             if tags_filter:
                 # Exact JSON-array tag membership, before pagination.
