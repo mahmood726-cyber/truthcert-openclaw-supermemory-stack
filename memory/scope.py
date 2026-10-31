@@ -41,7 +41,11 @@ def scope_clause(alias: str = "") -> str:
     return (
         f"(CASE WHEN json_type({column}, '$.project_id') IS NULL "
         f"THEN '{LEGACY_PROJECT_ID}' "
-        f"ELSE json_extract({column}, '$.project_id') END) = ?"
+        f"WHEN json_type({column}, '$.project_id') = 'text' "
+        f"AND (SELECT COUNT(*) FROM json_each({column}) "
+        "WHERE key = 'project_id') = 1 "
+        f"THEN json_extract({column}, '$.project_id') "
+        "ELSE NULL END) = ?"
     )
 
 
