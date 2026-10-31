@@ -455,7 +455,7 @@ class LocalSQLiteBackend:
         Args:
             confirm: Must be True to proceed
         """
-        if not confirm:
+        if confirm is not True:
             return False
 
         with self._get_connection() as conn:

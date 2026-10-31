@@ -492,7 +492,7 @@ class AsyncLocalSQLiteBackend:
         Args:
             confirm: Must be True to proceed
         """
-        if not confirm:
+        if confirm is not True:
             return False
 
         if not self._initialized:
