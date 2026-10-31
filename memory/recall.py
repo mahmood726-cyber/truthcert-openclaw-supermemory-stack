@@ -179,14 +179,19 @@ class MemoryRecall:
 
         Returns key decisions and context for the current session.
         """
-        # Get recent decisions
-        decisions = self.recall_by_type(MemoryType.DECISION, limit=5)
-
-        # Get codebase index
-        codebase = self.recall_codebase_index()
-
-        # Get recent summaries
-        summaries = self.recall_by_type(MemoryType.SUMMARY, limit=3)
+        # /profile is automatic injection, not an explicitly authorized
+        # SECRET read. Enforce the class before pagination so newer SECRET
+        # records cannot hide older usable context.
+        decisions = self.backend.list_items(
+            limit=5, type_filter=MemoryType.DECISION, exclude_secret=True
+        )
+        codebase_candidates = self.backend.list_items(
+            limit=1, type_filter=MemoryType.CODEBASE_INDEX, exclude_secret=True
+        )
+        codebase = codebase_candidates[0] if codebase_candidates else None
+        summaries = self.backend.list_items(
+            limit=3, type_filter=MemoryType.SUMMARY, exclude_secret=True
+        )
 
         return {
             "recent_decisions": [{"text": d.text[:200], "tags": d.tags} for d in decisions],
