@@ -241,6 +241,7 @@ def test_scoped_sql_template_binds_project_values(tmp_path) -> None:
     finally:
         conn.close()
 
+
 def test_project_memory_hash_changes_on_provenance_and_privacy_edits(tmp_path) -> None:
     """A source-revision or privacy edit must invalidate retained recall provenance."""
     db = str(tmp_path / "fingerprint.db")
