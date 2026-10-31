@@ -45,7 +45,10 @@ def test_sync_recall_hash_matches_selected_snapshot_under_concurrent_revision(
     memory = LocalSQLiteBackend(db_path, project_id="project-a")
     _enable_wal(db_path)
     memory.store(
-        MemoryItem(text="snapshotmarker synthetic source revision", metadata={"source_revision": "v1"})
+        MemoryItem(
+            text="snapshotmarker synthetic source revision",
+            metadata={"source_revision": "v1"},
+        )
     )
     prewrite_hash = memory.compute_db_hash()
     original = memory._row_to_item
