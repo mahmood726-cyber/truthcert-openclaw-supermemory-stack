@@ -6,6 +6,7 @@ from memory.backend_async_sqlite import AsyncLocalSQLiteBackend
 from memory.backend_local_sqlite import LocalSQLiteBackend
 from memory.commands import MemoryCommands
 from memory.schema import MemoryItem, MemoryType
+from memory.scope import scoped_sql
 
 
 def _memory(text: str) -> MemoryItem:
@@ -192,3 +193,41 @@ async def test_async_scoped_tag_membership_is_exact(tmp_path) -> None:
     finally:
         await a.close()
         await b.close()
+
+
+def test_scoped_sql_template_rejects_missing_repeated_or_untrusted_scope() -> None:
+    """SQL construction must not silently omit scope or interpolate an alias."""
+    with pytest.raises(ValueError, match="exactly one"):
+        scoped_sql("SELECT id FROM memory_items")
+    with pytest.raises(ValueError, match="exactly one"):
+        scoped_sql("SELECT /*PROJECT_SCOPE*/ OR /*PROJECT_SCOPE*/")
+    with pytest.raises(ValueError, match="invalid SQL alias"):
+        scoped_sql("SELECT /*PROJECT_SCOPE*/", alias="m; DROP TABLE memory_items; --")
+
+
+def test_scoped_sql_template_binds_project_values(tmp_path) -> None:
+    """Template expansion preserves one value placeholder and legacy separation."""
+    import sqlite3
+
+    conn = sqlite3.connect(str(tmp_path / "template_scopes.db"))
+    try:
+        conn.execute("CREATE TABLE memory_items (id TEXT, metadata TEXT)")
+        conn.executemany(
+            "INSERT INTO memory_items(id, metadata) VALUES (?, ?)",
+            [
+                ("legacy", "{}"),
+                ("a", '{"project_id":"project-a"}'),
+                ("b", '{"project_id":"project-b"}'),
+                ("null", '{"project_id":null}'),
+            ],
+        )
+        sql = scoped_sql("SELECT id FROM memory_items WHERE /*PROJECT_SCOPE*/")
+        assert sql.count("?") == 1
+        for project_id, expected in (
+            ("__legacy__", "legacy"),
+            ("project-a", "a"),
+            ("project-b", "b"),
+        ):
+            assert conn.execute(sql, (project_id,)).fetchall() == [(expected,)]
+    finally:
+        conn.close()
