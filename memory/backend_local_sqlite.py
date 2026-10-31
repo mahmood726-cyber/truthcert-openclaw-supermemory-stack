@@ -380,13 +380,67 @@ class LocalSQLiteBackend:
             return cursor.rowcount > 0
 
     def delete_by_query(self, query: str, hard: bool = False) -> int:
-        """Delete items matching a search query."""
-        results = self.search(query, limit=10000)
-        count = 0
-        for item in results.items:
-            if self.delete(item.id, hard=hard):
-                count += 1
-        return count
+        """Delete every active scoped FTS match, not just the first search page.
+
+        The write transaction freezes the matching set against concurrent
+        changes. Keyset pagination avoids a result cap and avoids skipping
+        matches as FTS triggers update the index during deletion.
+        """
+        safe_query = sanitize_fts5_query(query)
+        select_sql = scoped_sql(
+            """
+            SELECT m.id FROM memory_items AS m
+            JOIN memory_fts ON m.rowid = memory_fts.rowid
+            WHERE memory_fts MATCH ? AND m.deleted = 0 AND /*PROJECT_SCOPE*/
+              AND (? IS NULL OR m.id > ?)
+            ORDER BY m.id LIMIT ?
+            """,
+            alias="m.",
+        )
+        if hard:
+            change_sql = scoped_sql(
+                "DELETE FROM memory_items WHERE id = ? AND deleted = 0 "
+                "AND /*PROJECT_SCOPE*/"
+            )
+        else:
+            change_sql = scoped_sql(
+                "UPDATE memory_items SET deleted = 1, updated_at_utc = ? "
+                "WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
+            )
+
+        removed = 0
+        last_id: str | None = None
+        with self._get_connection() as conn:
+            # Lock writers before selecting, so the selected IDs cannot be
+            # replaced, moved between projects, or changed during deletion.
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.cursor()
+            while True:
+                cursor.execute(
+                    select_sql,
+                    (safe_query, self.project_id, last_id, last_id, 512),
+                )
+                ids = [row[0] for row in cursor.fetchall()]
+                if not ids:
+                    break
+
+                if hard:
+                    cursor.executemany(
+                        change_sql,
+                        ((item_id, self.project_id) for item_id in ids),
+                    )
+                else:
+                    updated_at = datetime.now(UTC).isoformat()
+                    cursor.executemany(
+                        change_sql,
+                        ((updated_at, item_id, self.project_id) for item_id in ids),
+                    )
+                if cursor.rowcount != len(ids):
+                    raise RuntimeError("Scoped memory deletion count mismatch")
+                removed += len(ids)
+                last_id = ids[-1]
+
+        return removed
 
     def wipe(self, confirm: bool = False) -> bool:
         """
