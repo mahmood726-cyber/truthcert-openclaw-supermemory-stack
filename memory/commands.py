@@ -287,7 +287,9 @@ class MemoryCommands:
         elif strategy == "threshold":
             result = self.compactor.compact_threshold()
         else:
-            result = {"error": f"Unknown strategy: {strategy}"}
+            # An invalid command must not vacuum or permanently remove
+            # soft-deleted records as a side effect of returning an error.
+            return {"error": f"Unknown strategy: {strategy}"}
 
         # Also clean up deleted items
         deleted_cleaned = self.compactor.cleanup_deleted()
