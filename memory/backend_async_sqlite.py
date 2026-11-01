@@ -326,7 +326,9 @@ class AsyncLocalSQLiteBackend:
 
             # BM25 must use this project's visible corpus, not the global index:
             # another project's records must not change ranked memory recall.
-            await cursor.execute("CREATE VIRTUAL TABLE temp.scoped_memory_fts USING fts5(id, text, tags)")
+            await cursor.execute(
+                "CREATE VIRTUAL TABLE temp.scoped_memory_fts USING fts5(id, text, tags)"
+            )
             index_sql = scoped_sql(
                 "INSERT INTO scoped_memory_fts(rowid, id, text, tags) "
                 "SELECT m.rowid, m.id, m.text, m.tags FROM memory_items AS m "
