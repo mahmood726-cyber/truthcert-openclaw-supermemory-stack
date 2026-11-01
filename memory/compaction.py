@@ -81,9 +81,7 @@ class MemoryCompactor:
 
         windows: dict[str, list[MemoryItem]] = {}
         for item in old_items:
-            window_start = item.created_at_utc.replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            window_start = item.created_at_utc.replace(hour=0, minute=0, second=0, microsecond=0)
             days_offset = (window_start - datetime(2020, 1, 1, tzinfo=UTC)).days
             window_key = f"window_{days_offset // summary_window_days}"
             windows.setdefault(window_key, []).append(item)
@@ -234,8 +232,7 @@ class MemoryCompactor:
                 raise RuntimeError("Memory snapshot changed during compaction")
             cursor = conn.cursor()
             select_sql = scoped_sql(
-                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 "
-                "AND /*PROJECT_SCOPE*/"
+                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
             )
             for _, sources in groups:
                 for item in sources:
@@ -245,8 +242,7 @@ class MemoryCompactor:
                         raise RuntimeError("Memory source changed during compaction")
 
             delete_sql = scoped_sql(
-                "DELETE FROM memory_items WHERE id = ? AND deleted = 0 "
-                "AND /*PROJECT_SCOPE*/"
+                "DELETE FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
             )
             for summary, sources in groups:
                 summary.id = str(uuid4())
