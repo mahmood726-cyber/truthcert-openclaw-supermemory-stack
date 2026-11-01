@@ -2,8 +2,10 @@
 Memory compaction - summarizes old items into stable summaries.
 """
 
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 from .backend_local_sqlite import LocalSQLiteBackend
 from .schema import (
@@ -12,6 +14,7 @@ from .schema import (
     MemorySource,
     MemoryType,
 )
+from .scope import enforce_store_scope, scoped_sql
 
 
 class MemoryCompactor:
@@ -58,15 +61,15 @@ class MemoryCompactor:
 
         cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
 
-        # Get all items older than cutoff
-        old_items = []
-        # The backend returns newest first; a fixed first-page cap hides old rows.
-        # Count only active rows in this trusted project scope.
-        active_count = self.backend.get_stats().total_items
-        all_items = self.backend.list_items(limit=max(1, active_count))
-        for item in all_items:
-            if item.created_at_utc < cutoff and item.type != MemoryType.SUMMARY:
-                old_items.append(item)
+        # These reads may race a writer. The final transaction refuses if
+        # the project's state differs from the original scoped fingerprint.
+        snapshot = self.backend.get_stats()
+        all_items = self.backend.list_items(limit=max(1, snapshot.total_items))
+        old_items = [
+            item
+            for item in all_items
+            if item.created_at_utc < cutoff and item.type != MemoryType.SUMMARY
+        ]
 
         if not old_items:
             return {
@@ -76,51 +79,36 @@ class MemoryCompactor:
                 "items_removed": 0,
             }
 
-        # Group by window
         windows: dict[str, list[MemoryItem]] = {}
         for item in old_items:
-            # Calculate window key
             window_start = item.created_at_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-            # Align to window
             days_offset = (window_start - datetime(2020, 1, 1, tzinfo=UTC)).days
-            window_num = days_offset // summary_window_days
-            window_key = f"window_{window_num}"
+            window_key = f"window_{days_offset // summary_window_days}"
+            windows.setdefault(window_key, []).append(item)
 
-            if window_key not in windows:
-                windows[window_key] = []
-            windows[window_key].append(item)
-
-        summaries_created = 0
-        items_removed = 0
-
-        for window_key, window_items in windows.items():
-            if len(window_items) < 2:
-                continue  # Not worth summarizing
-
-            # Create summary
-            summary_text = self._create_summary(window_items)
-
-            if not dry_run:
-                # Store summary
-                summary_item = MemoryItem(
-                    type=MemoryType.SUMMARY,
-                    source=MemorySource.SYSTEM,
-                    sensitivity=self._summary_sensitivity(window_items),
-                    text=summary_text,
-                    tags=["compaction", window_key],
-                    metadata={
-                        "source_count": len(window_items),
-                        "source_ids": [i.id for i in window_items],
-                        "window_key": window_key,
-                    },
+        groups: list[tuple[MemoryItem, list[MemoryItem]]] = []
+        if not dry_run:
+            for window_key, window_items in windows.items():
+                if len(window_items) < 2:
+                    continue
+                groups.append(
+                    (
+                        MemoryItem(
+                            type=MemoryType.SUMMARY,
+                            source=MemorySource.SYSTEM,
+                            sensitivity=self._summary_sensitivity(window_items),
+                            text=self._create_summary(window_items),
+                            tags=["compaction", window_key],
+                            metadata={
+                                "source_count": len(window_items),
+                                "source_ids": [item.id for item in window_items],
+                                "window_key": window_key,
+                            },
+                        ),
+                        window_items,
+                    )
                 )
-                self.backend.store(summary_item)
-                summaries_created += 1
-
-                # Remove original items
-                for item in window_items:
-                    self.backend.delete(item.id, hard=True)
-                    items_removed += 1
+        summaries_created, items_removed = self._commit_groups(groups, snapshot.db_hash)
 
         return {
             "strategy": "rolling",
@@ -183,26 +171,20 @@ class MemoryCompactor:
         items_removed = 0
 
         if items_to_remove and not dry_run:
-            # Create a single summary of removed items
-            summary_text = self._create_summary(items_to_remove)
-
             summary_item = MemoryItem(
                 type=MemoryType.SUMMARY,
                 source=MemorySource.SYSTEM,
                 sensitivity=self._summary_sensitivity(items_to_remove),
-                text=summary_text,
+                text=self._create_summary(items_to_remove),
                 tags=["compaction", "threshold"],
                 metadata={
                     "source_count": len(items_to_remove),
                     "trigger": "threshold",
                 },
             )
-            self.backend.store(summary_item)
-            summaries_created = 1
-
-            for item in items_to_remove:
-                self.backend.delete(item.id, hard=True)
-                items_removed += 1
+            summaries_created, items_removed = self._commit_groups(
+                [(summary_item, items_to_remove)], stats.db_hash
+            )
 
         return {
             "strategy": "threshold",
@@ -212,6 +194,85 @@ class MemoryCompactor:
             "items_removed": items_removed,
             "dry_run": dry_run,
         }
+
+    def _commit_groups(
+        self,
+        groups: list[tuple[MemoryItem, list[MemoryItem]]],
+        expected_db_hash: str,
+    ) -> tuple[int, int]:
+        """Atomically insert summaries and remove only the sources they describe.
+
+        Fail closed if any active in-project memory changed after the initial
+        count/read. An unsigned SQLite fingerprint proves snapshot consistency,
+        not authenticity of the underlying sources or model calls. BEGIN IMMEDIATE
+        serializes writers and rollback prevents partial loss on any exception.
+        """
+        if not groups:
+            return 0, 0
+        if (
+            not isinstance(expected_db_hash, str)
+            or len(expected_db_hash) != 71
+            or not expected_db_hash.startswith("sha256:")
+        ):
+            raise RuntimeError("Missing memory snapshot fingerprint")
+
+        source_ids: set[str] = set()
+        for summary, sources in groups:
+            if summary.type != MemoryType.SUMMARY or not sources:
+                raise ValueError("Compaction requires a nonempty summary group")
+            enforce_store_scope(summary, self.backend.project_id)
+            for item in sources:
+                if not item.id or item.id in source_ids or item.type == MemoryType.SUMMARY:
+                    raise ValueError("Duplicate or invalid compaction source")
+                source_ids.add(item.id)
+
+        with self.backend._get_connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if self.backend._compute_db_hash_on_connection(conn) != expected_db_hash:
+                raise RuntimeError("Memory snapshot changed during compaction")
+            cursor = conn.cursor()
+            select_sql = scoped_sql(
+                "SELECT * FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
+            )
+            for _, sources in groups:
+                for item in sources:
+                    cursor.execute(select_sql, (item.id, self.backend.project_id))
+                    row = cursor.fetchone()
+                    if row is None or self.backend._row_to_item(row) != item:
+                        raise RuntimeError("Memory source changed during compaction")
+
+            delete_sql = scoped_sql(
+                "DELETE FROM memory_items WHERE id = ? AND deleted = 0 AND /*PROJECT_SCOPE*/"
+            )
+            for summary, sources in groups:
+                summary.id = str(uuid4())
+                cursor.execute(
+                    """
+                    INSERT INTO memory_items (
+                        id, created_at_utc, updated_at_utc, type, source,
+                        tags, text, metadata, sensitivity, retention, content_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        summary.id,
+                        summary.created_at_utc.isoformat(),
+                        summary.updated_at_utc.isoformat(),
+                        summary.type.value,
+                        summary.source.value,
+                        json.dumps(summary.tags),
+                        summary.text,
+                        json.dumps(summary.metadata),
+                        summary.sensitivity.value,
+                        json.dumps(summary.retention.model_dump()),
+                        summary.compute_hash(),
+                    ),
+                )
+                for item in sources:
+                    cursor.execute(delete_sql, (item.id, self.backend.project_id))
+                    if cursor.rowcount != 1:
+                        raise RuntimeError("Memory source disappeared during compaction")
+
+        return len(groups), len(source_ids)
 
     def cleanup_deleted(self) -> int:
         """Remove soft-deleted items and compact database."""
