@@ -151,8 +151,7 @@ class ContextPacker:
                 raise ValueError("Unsafe SECRET memory in automatic packing")
             if (
                 not isinstance(item.metadata, dict)
-                or item.metadata.get("project_id", LEGACY_PROJECT_ID)
-                != self.backend.project_id
+                or item.metadata.get("project_id", LEGACY_PROJECT_ID) != self.backend.project_id
             ):
                 raise ValueError("Automatic recall project scope mismatch")
         if recall_result.items and not recall_result.db_hash:
