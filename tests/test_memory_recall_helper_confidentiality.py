@@ -82,9 +82,7 @@ def test_every_automatic_helper_filters_secret_before_limit(scoped_memories):
     assert [m.id for m in recall.recall_recent(limit=1, type_filter=MemoryType.NOTE)] == [
         "safe-note"
     ]
-    assert [m.id for m in recall.recall_by_type(MemoryType.DECISION, limit=1)] == [
-        "safe-decision"
-    ]
+    assert [m.id for m in recall.recall_by_type(MemoryType.DECISION, limit=1)] == ["safe-decision"]
     assert [m.id for m in recall.recall_decisions(limit=1, tags_filter=["keep"])] == [
         "safe-decision"
     ]
@@ -109,9 +107,7 @@ def test_corrupt_sensitivity_is_refused_before_pagination(scoped_memories):
         )
     recall = MemoryRecall(project_a, MemoryProfile(name="synthetic", max_recall_results=1))
     assert [m.id for m in recall.recall_decisions()] == ["safe-decision"]
-    assert [m.id for m in recall.recall_by_type(MemoryType.DECISION)] == [
-        "safe-decision"
-    ]
+    assert [m.id for m in recall.recall_by_type(MemoryType.DECISION)] == ["safe-decision"]
 
 
 @pytest.mark.parametrize("bad_limit", [-1, 0, True, 1.5, "1"])
@@ -136,9 +132,7 @@ def test_recent_refuses_invalid_hours(scoped_memories, bad_hours):
 
 def test_auto_recall_disabled_applies_to_all_helpers(scoped_memories):
     _, project_a, _ = scoped_memories
-    recall = MemoryRecall(
-        project_a, MemoryProfile(name="synthetic-off", auto_recall=False)
-    )
+    recall = MemoryRecall(project_a, MemoryProfile(name="synthetic-off", auto_recall=False))
     assert recall.recall_recent() == []
     assert recall.recall_by_type(MemoryType.NOTE) == []
     assert recall.recall_decisions() == []
