@@ -72,7 +72,7 @@ def _contains_sensitive_field(value: Any) -> bool:
             pending.extend(current)
         elif isinstance(current, str):
             # Handles JSON and Python repr, not just exact named token formats.
-            for key in re.findall(r"""['"]([^'"]+)['"]\\s*:""", current):
+            for key in re.findall(r"""['"]([^'"]+)['"]\s*:""", current):
                 if _sensitive_field_name(key):
                     return True
     return False
