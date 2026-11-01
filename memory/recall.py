@@ -115,32 +115,38 @@ class MemoryRecall:
 
         return result
 
+    def _validated_list_limit(self, limit: int | None) -> int:
+        """Refuse SQLite-unbounded and noninteger limits on every recall path."""
+        effective_limit = self.profile.max_recall_results if limit is None else limit
+        if (
+            isinstance(effective_limit, bool)
+            or not isinstance(effective_limit, int)
+            or effective_limit <= 0
+        ):
+            raise ValueError("limit must be a positive integer")
+        return effective_limit
+
     def recall_recent(
         self,
         hours: int = 24,
         limit: int | None = None,
         type_filter: MemoryType | None = None,
     ) -> list[MemoryItem]:
-        """
-        Recall recent memory items.
+        """Recall recent non-SECRET items for automatic planning context."""
+        effective_limit = self._validated_list_limit(limit)
+        if isinstance(hours, bool) or not isinstance(hours, int) or hours <= 0:
+            raise ValueError("hours must be a positive integer")
+        if not self.profile.auto_recall:
+            return []
 
-        Args:
-            hours: How many hours back to look
-            limit: Maximum results
-            type_filter: Filter by type
-
-        Returns:
-            List of recent memory items
-        """
-        effective_limit = limit or self.profile.max_recall_results
         cutoff = datetime.now(UTC) - timedelta(hours=hours)
-
         items = self.backend.list_items(
             limit=effective_limit,
             type_filter=type_filter,
+            # Apply privacy filtering before LIMIT, never to an already
+            # truncated page; callers needing SECRET use the direct backend.
+            exclude_secret=True,
         )
-
-        # Filter by time
         return [item for item in items if item.created_at_utc >= cutoff]
 
     def recall_by_type(
@@ -148,11 +154,14 @@ class MemoryRecall:
         memory_type: MemoryType,
         limit: int | None = None,
     ) -> list[MemoryItem]:
-        """Recall items of a specific type."""
-        effective_limit = limit or self.profile.max_recall_results
+        """Recall non-SECRET items of a type for automatic planning context."""
+        effective_limit = self._validated_list_limit(limit)
+        if not self.profile.auto_recall:
+            return []
         return self.backend.list_items(
             limit=effective_limit,
             type_filter=memory_type,
+            exclude_secret=True,
         )
 
     def recall_decisions(
@@ -160,21 +169,25 @@ class MemoryRecall:
         limit: int | None = None,
         tags_filter: list[str] | None = None,
     ) -> list[MemoryItem]:
-        """Recall decision items."""
-        effective_limit = limit or self.profile.max_recall_results
-        # Filter at the database before LIMIT: post-page filtering can
-        # hide older matching decisions when newer unrelated items fill a page.
+        """Recall non-SECRET decisions with filtering before pagination."""
+        effective_limit = self._validated_list_limit(limit)
+        if not self.profile.auto_recall:
+            return []
         return self.backend.list_items(
             limit=effective_limit,
             type_filter=MemoryType.DECISION,
             tags_filter=tags_filter,
+            exclude_secret=True,
         )
 
     def recall_codebase_index(self) -> MemoryItem | None:
-        """Recall the most recent codebase index."""
+        """Recall the most recent non-SECRET codebase index."""
+        if not self.profile.auto_recall:
+            return None
         items = self.backend.list_items(
             limit=1,
             type_filter=MemoryType.CODEBASE_INDEX,
+            exclude_secret=True,
         )
         return items[0] if items else None
 
