@@ -75,6 +75,10 @@ jobs:
         if: ${{ success() || failure() }}
         run: ruff format --check .
 
+      - name: Diagnose Ruff import ordering (temporary read-only diagnostic)
+        if: ${{ success() || failure() }}
+        run: ruff check --diff tests/test_memory_profile_off_injection.py
+
       - name: Run mypy type checking
         # Surface typing failures independently without bypassing earlier checks.
         if: ${{ success() || failure() }}

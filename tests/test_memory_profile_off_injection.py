@@ -29,8 +29,7 @@ class NoReadBackend:
 def test_off_profile_summary_does_not_read_backend():
     off = schema.MemoryProfile(name="off", auto_recall=False, auto_capture=False)
     assert (
-        recall.MemoryRecall(NoReadBackend(), off).get_profile_summary()
-        == EXPECTED_DISABLED_SUMMARY
+        recall.MemoryRecall(NoReadBackend(), off).get_profile_summary() == EXPECTED_DISABLED_SUMMARY
     )
 
 
@@ -81,17 +80,17 @@ def test_off_profile_refuses_context_through_high_level_caller(tmp_path):
         max_recall_results=0,
         max_inject_chars=0,
     )
-    commands = commands.MemoryCommands(db_path=path, profile=off, project_id="project-a")
-    result = commands.get_profile()
+    memory_commands = commands.MemoryCommands(db_path=path, profile=off, project_id="project-a")
+    result = memory_commands.get_profile()
     assert result["summary"] == EXPECTED_DISABLED_SUMMARY
     assert result["stats"]["total_items"] == 4  # Explicit administrative stats only.
     assert "Synthetic" not in str(result["summary"])
     assert "/synthetic/private" not in str(result["summary"])
 
     # Disabling automatic injection does not destroy data or change authorized reads.
-    assert commands.backend.retrieve("private-decision") is not None
-    assert commands.backend.retrieve("secret-decision") is not None
-    assert commands.backend.retrieve("foreign") is None
+    assert memory_commands.backend.retrieve("private-decision") is not None
+    assert memory_commands.backend.retrieve("secret-decision") is not None
+    assert memory_commands.backend.retrieve("foreign") is None
 
     # Enabled behavior and pre-pagination SECRET exclusion must be preserved.
     enabled = recall.MemoryRecall(a, schema.MemoryProfile(name="enabled"))
