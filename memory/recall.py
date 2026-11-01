@@ -81,6 +81,9 @@ class MemoryRecall:
             type_filter=type_filter,
             source_filter=source_filter,
             tags_filter=tags_filter,
+            # This is automatic, potentially prompt-injected context. Explicit
+            # authorized SECRET reads remain available on the direct backend.
+            exclude_secret=True,
         )
 
         # Always enforce the requested limit and relevance threshold. A
@@ -106,7 +109,10 @@ class MemoryRecall:
             scored_items.sort(key=lambda pair: pair[1], reverse=True)
             result.items = [item for item, _ in scored_items[:effective_limit]]
 
-        result.selection_rule = f"FTS5 + recency_weight={recency_weight}, limit={effective_limit}"
+        result.selection_rule = (
+            f"FTS5 + recency_weight={recency_weight}, "
+            f"limit={effective_limit}, SECRET excluded"
+        )
 
         return result
 

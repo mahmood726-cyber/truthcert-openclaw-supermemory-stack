@@ -288,6 +288,7 @@ class AsyncLocalSQLiteBackend:
         source_filter: MemorySource | None = None,
         tags_filter: list[str] | None = None,
         include_deleted: bool = False,
+        exclude_secret: bool = False,
     ) -> RecallResult:
         """
         Search memory items using FTS5 asynchronously.
@@ -299,6 +300,7 @@ class AsyncLocalSQLiteBackend:
             source_filter: Filter by source
             tags_filter: Filter by tags (any match)
             include_deleted: Include soft-deleted items
+            exclude_secret: Exclude SECRET and corrupt classes before pagination
         """
         # Keep the asynchronous path as strict as the synchronous backend:
         # SQLite's negative LIMIT otherwise returns an unbounded result set.
@@ -333,6 +335,12 @@ class AsyncLocalSQLiteBackend:
 
             if not include_deleted:
                 sql += " AND m.deleted = 0"
+
+            if exclude_secret:
+                # Automatic recall must not disclose SECRET or malformed
+                # sensitivity values. Filter before rank and LIMIT, not after.
+                sql += " AND m.sensitivity IN (?, ?)"
+                params.extend([MemorySensitivity.PUBLIC.value, MemorySensitivity.PRIVATE.value])
 
             if type_filter:
                 sql += " AND m.type = ?"
@@ -384,7 +392,7 @@ class AsyncLocalSQLiteBackend:
                 total_matches=total,
                 execution_time_ms=elapsed_ms,
                 db_hash=db_hash,
-                selection_rule=f"FTS5 match (sanitized), limit={limit}",
+                selection_rule=f"FTS5 match (sanitized), limit={limit}, exclude_secret={exclude_secret}",
             )
         finally:
             # Release snapshot before pooling, including after an exception.

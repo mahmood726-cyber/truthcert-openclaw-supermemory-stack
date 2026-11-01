@@ -153,3 +153,82 @@ async def test_async_profile_safe_filter_keeps_scope_and_limit(tmp_path):
     finally:
         await foreign.close()
         await backend.close()
+
+
+def test_default_recall_and_packed_command_never_inject_secret_or_corrupt_items(tmp_path):
+    """Default auto-recall must filter sensitive rows before LIMIT and packing."""
+    from memory.commands import MemoryCommands
+
+    path = str(tmp_path / "recall-secret.db")
+    a = LocalSQLiteBackend(path, project_id="project-a")
+    b = LocalSQLiteBackend(path, project_id="project-b")
+    stamp = datetime(2026, 10, 31, tzinfo=UTC)
+    for i in range(7):
+        a.store(
+            _item(
+                f"secret-{i}",
+                MemoryType.NOTE,
+                MemorySensitivity.SECRET,
+                stamp + timedelta(minutes=i),
+            )
+        )
+    a.store(_item("safe", MemoryType.NOTE, MemorySensitivity.PRIVATE, stamp))
+    a.store(_item("corrupt", MemoryType.NOTE, MemorySensitivity.SECRET, stamp))
+    b.store(_item("foreign", MemoryType.NOTE, MemorySensitivity.PUBLIC, stamp))
+    with sqlite3.connect(path) as conn:
+        conn.execute("UPDATE memory_items SET sensitivity='unknown' WHERE id='corrupt'")
+
+    # Explicit backend retrieval remains available to a trusted, authorized caller.
+    assert a.retrieve("secret-0") is not None
+    assert len(a.search("Synthetic", limit=20).items) == 8
+    safe = a.search("Synthetic", limit=1, exclude_secret=True)
+    assert safe.total_matches == 1
+    assert [item.id for item in safe.items] == ["safe"]
+    automatic = MemoryRecall(a, MemoryProfile(name="synthetic")).recall("Synthetic", limit=1)
+    assert [item.id for item in automatic.items] == ["safe"]
+    assert automatic.total_matches == 1
+
+    commands = MemoryCommands(
+        db_path=path, profile=MemoryProfile(name="synthetic"), project_id="project-a"
+    )
+    plain = commands.recall_memories("Synthetic", limit=1)
+    assert [item["id"] for item in plain["items"]] == ["safe"]
+    packed = commands.recall_memories("Synthetic", pack=True, limit=1)
+    assert packed["items_included"] == 1
+    assert "Synthetic safe classified memory" in packed["content"]
+    assert "Synthetic secret-" not in packed["content"]
+    assert "Synthetic corrupt" not in packed["content"]
+    assert "Synthetic foreign" not in packed["content"]
+
+
+@pytest.mark.asyncio
+async def test_async_default_safe_search_filters_secret_and_invalid_classes(tmp_path):
+    """Async filtering must match sync semantics and preserve project isolation."""
+    path = str(tmp_path / "async-recall-secret.db")
+    a = AsyncLocalSQLiteBackend(path, project_id="project-a")
+    b = AsyncLocalSQLiteBackend(path, project_id="project-b")
+    await a.initialize()
+    await b.initialize()
+    stamp = datetime(2026, 10, 31, tzinfo=UTC)
+    try:
+        await a.store(_item("secret", MemoryType.NOTE, MemorySensitivity.SECRET, stamp))
+        await a.store(_item("safe", MemoryType.NOTE, MemorySensitivity.PUBLIC, stamp))
+        await a.store(_item("corrupt", MemoryType.NOTE, MemorySensitivity.SECRET, stamp))
+        await b.store(_item("foreign", MemoryType.NOTE, MemorySensitivity.PUBLIC, stamp))
+        with sqlite3.connect(path) as conn:
+            conn.execute("UPDATE memory_items SET sensitivity='unknown' WHERE id='corrupt'")
+        # Direct, expressly requested searches can still include SECRET.
+        direct = await a.search("Synthetic", limit=10)
+        assert {item.id for item in direct.items if item.id != "corrupt"} == {
+            "secret",
+            "safe",
+        }
+        safe = await a.search("Synthetic", limit=1, exclude_secret=True)
+        assert safe.total_matches == 1
+        assert [item.id for item in safe.items] == ["safe"]
+        assert [item.id for item in (await b.search("Synthetic", limit=1, exclude_secret=True)).items] == [
+            "foreign"
+        ]
+    finally:
+        await b.close()
+        await a.close()
