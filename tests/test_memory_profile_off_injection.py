@@ -7,7 +7,12 @@ Memory is never a source of certifiable evidence.
 from memory.backend_local_sqlite import LocalSQLiteBackend
 from memory.commands import MemoryCommands
 from memory.recall import MemoryRecall
-from memory.schema import MemoryItem, MemoryProfile, MemorySensitivity, MemoryType
+from memory.schema import (
+    MemoryItem,
+    MemoryProfile,
+    MemorySensitivity,
+    MemoryType,
+)
 
 
 EXPECTED_DISABLED_SUMMARY = {
