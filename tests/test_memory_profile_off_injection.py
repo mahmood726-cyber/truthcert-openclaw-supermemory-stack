@@ -6,7 +6,6 @@ Memory is never a source of certifiable evidence.
 
 from memory import backend_local_sqlite, commands, recall, schema
 
-
 EXPECTED_DISABLED_SUMMARY = {
     "recent_decisions": [],
     "codebase_indexed": False,
