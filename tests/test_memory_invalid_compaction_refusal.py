@@ -12,9 +12,7 @@ from memory.schema import MemoryItem
 
 def _physical_rows(path: str) -> list[tuple[str, str, int]]:
     with sqlite3.connect(path) as conn:
-        return conn.execute(
-            "SELECT id, text, deleted FROM memory_items ORDER BY id"
-        ).fetchall()
+        return conn.execute("SELECT id, text, deleted FROM memory_items ORDER BY id").fetchall()
 
 
 def test_unknown_compaction_strategy_is_storage_noop_across_projects(tmp_path) -> None:
@@ -31,7 +29,7 @@ def test_unknown_compaction_strategy_is_storage_noop_across_projects(tmp_path) -
 
     before = _physical_rows(path)
     assert {row[0] for row in before} == {deleted_a, kept_a, deleted_b, kept_b}
-    assert dict((row[0], row[2]) for row in before)[deleted_a] == 1
+    assert next(row[2] for row in before if row[0] == deleted_a) == 1
     first_hash = a.backend.compute_db_hash()
 
     result = a.compact(strategy="not-a-valid-strategy")
