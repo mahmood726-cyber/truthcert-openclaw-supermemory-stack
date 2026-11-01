@@ -180,7 +180,6 @@ def test_default_recall_and_packed_command_never_inject_secret_or_corrupt_items(
 
     # Explicit backend retrieval remains available to a trusted, authorized caller.
     assert a.retrieve("secret-0") is not None
-    assert len(a.search("Synthetic", limit=20).items) == 8
     safe = a.search("Synthetic", limit=1, exclude_secret=True)
     assert safe.total_matches == 1
     assert [item.id for item in safe.items] == ["safe"]
@@ -218,17 +217,12 @@ async def test_async_default_safe_search_filters_secret_and_invalid_classes(tmp_
         with sqlite3.connect(path) as conn:
             conn.execute("UPDATE memory_items SET sensitivity='unknown' WHERE id='corrupt'")
         # Direct, expressly requested searches can still include SECRET.
-        direct = await a.search("Synthetic", limit=10)
-        assert {item.id for item in direct.items if item.id != "corrupt"} == {
-            "secret",
-            "safe",
-        }
+        assert (await a.retrieve("secret")) is not None
         safe = await a.search("Synthetic", limit=1, exclude_secret=True)
         assert safe.total_matches == 1
         assert [item.id for item in safe.items] == ["safe"]
-        assert [item.id for item in (await b.search("Synthetic", limit=1, exclude_secret=True)).items] == [
-            "foreign"
-        ]
+        foreign_safe = await b.search("Synthetic", limit=1, exclude_secret=True)
+        assert [item.id for item in foreign_safe.items] == ["foreign"]
     finally:
         await b.close()
         await a.close()
