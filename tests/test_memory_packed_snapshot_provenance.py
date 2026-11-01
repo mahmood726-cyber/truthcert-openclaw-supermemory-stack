@@ -78,9 +78,7 @@ def test_high_level_packed_recall_keeps_original_fingerprint(tmp_path, monkeypat
     "invalid_hash",
     ["", "sha256:abc", "sha256:" + "g" * 64, "signed-by-human", "sha256:" + "A" * 64],
 )
-def test_nonempty_recall_refuses_missing_or_malformed_fingerprint(
-    tmp_path, invalid_hash
-) -> None:
+def test_nonempty_recall_refuses_missing_or_malformed_fingerprint(tmp_path, invalid_hash) -> None:
     backend = LocalSQLiteBackend(str(tmp_path / "bad_hash.db"), project_id="project-a")
     backend.store(MemoryItem(text="invalidpackhashmarker synthetic"))
     result = backend.search("invalidpackhashmarker")
