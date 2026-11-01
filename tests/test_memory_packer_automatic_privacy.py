@@ -39,12 +39,10 @@ def test_off_profile_never_packs_precomputed_recall(tmp_path) -> None:
         sensitivity=MemorySensitivity.SECRET,
         metadata={"project_id": "project-a"},
     )
-    recalled = RecallResult(
-        items=[item], query="synthetic", db_hash="sha256:" + "a" * 64
+    recalled = RecallResult(items=[item], query="synthetic", db_hash="sha256:" + "a" * 64)
+    packed = ContextPacker(backend, MemoryProfile(name="off", auto_recall=False)).pack_from_recall(
+        recalled
     )
-    packed = ContextPacker(
-        backend, MemoryProfile(name="off", auto_recall=False)
-    ).pack_from_recall(recalled)
     assert packed.items_included == 0
     assert packed.content == ""
 
