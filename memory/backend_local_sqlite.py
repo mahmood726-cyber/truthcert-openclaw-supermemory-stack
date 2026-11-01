@@ -238,15 +238,33 @@ class LocalSQLiteBackend:
         with self._get_connection() as conn:
             # One explicit SQLite read transaction binds hits, totals and provenance
             # to the same snapshot even if another process writes concurrently.
+            conn.execute("PRAGMA temp_store=MEMORY")
             conn.execute("BEGIN")
             cursor = conn.cursor()
 
+            # BM25 must use this project's visible corpus, not the global index:
+            # another project's records must not change ranked memory recall.
+            cursor.execute("CREATE VIRTUAL TABLE temp.scoped_memory_fts USING fts5(id, text, tags)")
+            index_sql = scoped_sql(
+                "INSERT INTO scoped_memory_fts(rowid, id, text, tags) "
+                "SELECT m.rowid, m.id, m.text, m.tags FROM memory_items AS m "
+                "WHERE /*PROJECT_SCOPE*/",
+                alias="m.",
+            )
+            index_params: list[Any] = [self.project_id]
+            if not include_deleted:
+                index_sql += " AND m.deleted = 0"
+            if exclude_secret:
+                index_sql += " AND m.sensitivity IN (?, ?)"
+                index_params.extend([MemorySensitivity.PUBLIC.value, MemorySensitivity.PRIVATE.value])
+            cursor.execute(index_sql, index_params)
+
             # Build query
             sql = """
-                SELECT m.*, bm25(memory_fts) as rank
+                SELECT m.*, bm25(scoped_memory_fts) as rank
                 FROM memory_items m
-                JOIN memory_fts ON m.id = memory_fts.id
-                WHERE memory_fts MATCH ?
+                JOIN scoped_memory_fts ON m.rowid = scoped_memory_fts.rowid
+                WHERE scoped_memory_fts MATCH ?
             """
             sql += scoped_sql(" AND /*PROJECT_SCOPE*/", alias="m.")
             params: list[Any] = [safe_query, self.project_id]
@@ -281,12 +299,12 @@ class LocalSQLiteBackend:
             # Derive the total from exactly the same scoped and typed filters.
             # Snapshot the bound parameters before LIMIT is appended.
             count_sql = sql.replace(
-                "SELECT m.*, bm25(memory_fts) as rank",
+                "SELECT m.*, bm25(scoped_memory_fts) as rank",
                 "SELECT COUNT(*)",
                 1,
             )
             count_params = params.copy()
-            sql += " ORDER BY rank LIMIT ?"
+            sql += " ORDER BY rank, m.id LIMIT ?"
             params.append(limit)
 
             cursor.execute(sql, params)
@@ -301,6 +319,7 @@ class LocalSQLiteBackend:
                 raise RuntimeError("Missing aggregate database row")
             total = total_row[0]
             db_hash = self._compute_db_hash_on_connection(conn)
+            cursor.execute("DROP TABLE temp.scoped_memory_fts")
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
