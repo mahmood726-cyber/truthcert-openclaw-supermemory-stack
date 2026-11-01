@@ -10,9 +10,11 @@ from .backend_local_sqlite import LocalSQLiteBackend
 from .schema import (
     MemoryItem,
     MemoryProfile,
+    MemorySensitivity,
     PackedContext,
     RecallResult,
 )
+from .scope import LEGACY_PROJECT_ID
 
 
 class ContextPacker:
@@ -133,7 +135,26 @@ class ContextPacker:
         recall_result: RecallResult,
         max_chars: int | None = None,
     ) -> PackedContext:
-        """Keep the search-time fingerprint with the items it actually describes."""
+        """Pack only scoped, non-SECRET evidence from enabled automatic recall.
+
+        A direct backend search may be explicitly authorised to return SECRET
+        records, but its results must never silently become prompt context.
+        The supplied fingerprint is unsigned and does not authenticate sources.
+        """
+        if not self.profile.auto_recall:
+            return PackedContext(selection_rule="auto_recall disabled")
+        for item in recall_result.items:
+            if item.sensitivity not in (
+                MemorySensitivity.PUBLIC,
+                MemorySensitivity.PRIVATE,
+            ):
+                raise ValueError("Unsafe SECRET memory in automatic packing")
+            if (
+                not isinstance(item.metadata, dict)
+                or item.metadata.get("project_id", LEGACY_PROJECT_ID)
+                != self.backend.project_id
+            ):
+                raise ValueError("Automatic recall project scope mismatch")
         if recall_result.items and not recall_result.db_hash:
             raise ValueError("recall items lack a snapshot fingerprint")
         return self.pack(
@@ -159,6 +180,9 @@ class ContextPacker:
         Returns:
             PackedContext ready for injection
         """
+        if not self.profile.auto_recall:
+            # In particular, do not call a custom retriever when memory is OFF.
+            return PackedContext(selection_rule="auto_recall disabled")
         result = recall_func(query)
         return self.pack_from_recall(result, max_chars)
 
