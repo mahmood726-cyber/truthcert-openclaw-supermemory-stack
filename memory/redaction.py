@@ -388,5 +388,10 @@ def should_capture_tool(tool_name: str, denylist: list[str] | None = None) -> bo
     Returns:
         True if tool output can be captured
     """
-    deny = denylist or SENSITIVE_TOOL_DENYLIST
-    return tool_name.lower() not in [t.lower() for t in deny]
+    # Profile-supplied skips extend (never replace) the mandatory sensitive
+    # tool exclusions. Otherwise one unrelated skip can re-enable capturing
+    # read_file, get_secrets, ssh_exec, and other high-risk tool output.
+    blocked = {name.casefold() for name in SENSITIVE_TOOL_DENYLIST}
+    if denylist:
+        blocked.update(name.casefold() for name in denylist)
+    return tool_name.casefold() not in blocked
