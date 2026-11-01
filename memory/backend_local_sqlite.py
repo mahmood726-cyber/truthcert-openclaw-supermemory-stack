@@ -256,7 +256,9 @@ class LocalSQLiteBackend:
                 index_sql += " AND m.deleted = 0"
             if exclude_secret:
                 index_sql += " AND m.sensitivity IN (?, ?)"
-                index_params.extend([MemorySensitivity.PUBLIC.value, MemorySensitivity.PRIVATE.value])
+                index_params.extend(
+                    [MemorySensitivity.PUBLIC.value, MemorySensitivity.PRIVATE.value]
+                )
             cursor.execute(index_sql, index_params)
 
             # Build query
