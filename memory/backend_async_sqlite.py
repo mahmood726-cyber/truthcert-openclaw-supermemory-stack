@@ -392,7 +392,10 @@ class AsyncLocalSQLiteBackend:
                 total_matches=total,
                 execution_time_ms=elapsed_ms,
                 db_hash=db_hash,
-                selection_rule=f"FTS5 match (sanitized), limit={limit}, exclude_secret={exclude_secret}",
+                selection_rule=(
+                    f"FTS5 match (sanitized), limit={limit}, "
+                    f"exclude_secret={exclude_secret}"
+                ),
             )
         finally:
             # Release snapshot before pooling, including after an exception.
