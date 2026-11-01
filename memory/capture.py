@@ -2,8 +2,8 @@
 Memory capture module - auto-capture hooks for chat and tool calls.
 """
 
-import re
 from collections.abc import Callable
+import re
 from typing import Any
 
 from .backend_local_sqlite import LocalSQLiteBackend
