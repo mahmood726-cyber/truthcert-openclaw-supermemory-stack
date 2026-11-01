@@ -4,10 +4,7 @@ The administrative stats view remains separately available to explicit callers.
 Memory is never a source of certifiable evidence.
 """
 
-import memory.backend_local_sqlite as backend_module
-import memory.commands as commands_module
-import memory.recall as recall_module
-import memory.schema as memory_schema
+from memory import backend_local_sqlite, commands, recall, schema
 
 
 EXPECTED_DISABLED_SUMMARY = {
@@ -30,58 +27,61 @@ class NoReadBackend:
 
 
 def test_off_profile_summary_does_not_read_backend():
-    off = memory_schema.MemoryProfile(name="off", auto_recall=False, auto_capture=False)
-    assert recall_module.MemoryRecall(NoReadBackend(), off).get_profile_summary() == EXPECTED_DISABLED_SUMMARY
+    off = schema.MemoryProfile(name="off", auto_recall=False, auto_capture=False)
+    assert (
+        recall.MemoryRecall(NoReadBackend(), off).get_profile_summary()
+        == EXPECTED_DISABLED_SUMMARY
+    )
 
 
 def test_off_profile_refuses_context_through_high_level_caller(tmp_path):
     path = str(tmp_path / "off-profile.db")
-    a = backend_module.LocalSQLiteBackend(path, project_id="project-a")
-    b = backend_module.LocalSQLiteBackend(path, project_id="project-b")
+    a = backend_local_sqlite.LocalSQLiteBackend(path, project_id="project-a")
+    b = backend_local_sqlite.LocalSQLiteBackend(path, project_id="project-b")
     for item in (
-        memory_schema.MemoryItem(
+        schema.MemoryItem(
             id="private-decision",
-            type=memory_schema.MemoryType.DECISION,
-            sensitivity=memory_schema.MemorySensitivity.PRIVATE,
+            type=schema.MemoryType.DECISION,
+            sensitivity=schema.MemorySensitivity.PRIVATE,
             text="Synthetic private planning decision",
         ),
-        memory_schema.MemoryItem(
+        schema.MemoryItem(
             id="secret-decision",
-            type=memory_schema.MemoryType.DECISION,
-            sensitivity=memory_schema.MemorySensitivity.SECRET,
+            type=schema.MemoryType.DECISION,
+            sensitivity=schema.MemorySensitivity.SECRET,
             text="Synthetic secret planning decision",
         ),
-        memory_schema.MemoryItem(
+        schema.MemoryItem(
             id="private-codebase",
-            type=memory_schema.MemoryType.CODEBASE_INDEX,
-            sensitivity=memory_schema.MemorySensitivity.PRIVATE,
+            type=schema.MemoryType.CODEBASE_INDEX,
+            sensitivity=schema.MemorySensitivity.PRIVATE,
             text="Synthetic private repository index",
             metadata={"repo_path": "/synthetic/private"},
         ),
-        memory_schema.MemoryItem(
+        schema.MemoryItem(
             id="private-summary",
-            type=memory_schema.MemoryType.SUMMARY,
-            sensitivity=memory_schema.MemorySensitivity.PRIVATE,
+            type=schema.MemoryType.SUMMARY,
+            sensitivity=schema.MemorySensitivity.PRIVATE,
             text="Synthetic private summary content",
         ),
     ):
         a.store(item)
     b.store(
-        memory_schema.MemoryItem(
+        schema.MemoryItem(
             id="foreign",
-            type=memory_schema.MemoryType.DECISION,
+            type=schema.MemoryType.DECISION,
             text="Synthetic foreign project decision",
         )
     )
 
-    off = memory_schema.MemoryProfile(
+    off = schema.MemoryProfile(
         name="off",
         auto_recall=False,
         auto_capture=False,
         max_recall_results=0,
         max_inject_chars=0,
     )
-    commands = commands_module.MemoryCommands(db_path=path, profile=off, project_id="project-a")
+    commands = commands.MemoryCommands(db_path=path, profile=off, project_id="project-a")
     result = commands.get_profile()
     assert result["summary"] == EXPECTED_DISABLED_SUMMARY
     assert result["stats"]["total_items"] == 4  # Explicit administrative stats only.
@@ -94,7 +94,7 @@ def test_off_profile_refuses_context_through_high_level_caller(tmp_path):
     assert commands.backend.retrieve("foreign") is None
 
     # Enabled behavior and pre-pagination SECRET exclusion must be preserved.
-    enabled = recall_module.MemoryRecall(a, memory_schema.MemoryProfile(name="enabled"))
+    enabled = recall.MemoryRecall(a, schema.MemoryProfile(name="enabled"))
     summary = enabled.get_profile_summary()
     assert [entry["text"] for entry in summary["recent_decisions"]] == [
         "Synthetic private planning decision"
