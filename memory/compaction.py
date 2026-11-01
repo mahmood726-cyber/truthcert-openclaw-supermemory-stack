@@ -51,7 +51,10 @@ class MemoryCompactor:
 
         # Get all items older than cutoff
         old_items = []
-        all_items = self.backend.list_items(limit=10000)
+        # The backend returns newest first; a fixed first-page cap hides old rows.
+        # Count only active rows in this trusted project scope.
+        active_count = self.backend.get_stats().total_items
+        all_items = self.backend.list_items(limit=max(1, active_count))
         for item in all_items:
             if item.created_at_utc < cutoff and item.type != MemoryType.SUMMARY:
                 old_items.append(item)
