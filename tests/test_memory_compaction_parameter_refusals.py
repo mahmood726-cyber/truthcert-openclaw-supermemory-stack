@@ -32,9 +32,7 @@ def test_invalid_threshold_controls_refuse_before_storage(
 ) -> None:
     backend = MagicMock(spec=LocalSQLiteBackend)
     with pytest.raises(ValueError, match="max_items|target_items"):
-        MemoryCompactor(backend).compact_threshold(
-            max_items=max_items, target_items=target_items
-        )
+        MemoryCompactor(backend).compact_threshold(max_items=max_items, target_items=target_items)
     backend.get_stats.assert_not_called()
     backend.list_items.assert_not_called()
     backend.store.assert_not_called()
@@ -77,9 +75,7 @@ def test_invalid_rolling_controls_refuse_before_storage(
 def test_invalid_threshold_dry_run_refuses_before_storage(dry_run: object) -> None:
     backend = MagicMock(spec=LocalSQLiteBackend)
     with pytest.raises(ValueError, match="dry_run"):
-        MemoryCompactor(backend).compact_threshold(
-            max_items=2, target_items=1, dry_run=dry_run
-        )
+        MemoryCompactor(backend).compact_threshold(max_items=2, target_items=1, dry_run=dry_run)
     backend.get_stats.assert_not_called()
     backend.list_items.assert_not_called()
     backend.store.assert_not_called()
