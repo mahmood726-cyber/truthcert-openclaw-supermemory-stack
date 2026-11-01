@@ -25,9 +25,7 @@ def test_sensitive_structured_tool_data_is_not_captured(
     memory_db, memory_profile, inputs, outputs, metadata
 ):
     capture = MemoryCapture(memory_db, memory_profile)
-    result = capture.capture_tool_call(
-        "synthetic_safe_tool", inputs, outputs, metadata=metadata
-    )
+    result = capture.capture_tool_call("synthetic_safe_tool", inputs, outputs, metadata=metadata)
     assert result is None
     assert memory_db.get_stats().total_items == 0
 
@@ -35,8 +33,7 @@ def test_sensitive_structured_tool_data_is_not_captured(
 def test_benign_structured_tool_call_remains_capturable(memory_db, memory_profile):
     capture = MemoryCapture(memory_db, memory_profile)
     item_id = capture.capture_tool_call(
-        "synthetic_safe_tool", {"query": "synthetic"}, {"status": "ok"},
-        metadata={"page": 1}
+        "synthetic_safe_tool", {"query": "synthetic"}, {"status": "ok"}, metadata={"page": 1}
     )
     assert item_id is not None
     assert memory_db.retrieve(item_id) is not None
@@ -58,7 +55,8 @@ def test_explicit_redaction_opt_out_does_not_override_sensitive_field_refusal(
 ):
     memory_profile.redact_before_store = False
     capture = MemoryCapture(memory_db, memory_profile)
-    assert capture.capture_tool_call(
-        "synthetic_safe_tool", {"password": "synthetic-secret"}, {}
-    ) is None
+    assert (
+        capture.capture_tool_call("synthetic_safe_tool", {"password": "synthetic-secret"}, {})
+        is None
+    )
     assert memory_db.get_stats().total_items == 0
