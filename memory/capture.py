@@ -2,14 +2,13 @@
 Memory capture module - auto-capture hooks for chat and tool calls.
 """
 
-from collections.abc import Callable
 import re
+from collections.abc import Callable
 from typing import Any
 
 from .backend_local_sqlite import LocalSQLiteBackend
 from .redaction import Redactor, should_capture_tool
 from .schema import MemoryItem, MemoryProfile, MemorySource, MemoryType
-
 
 _SENSITIVE_FIELD_SUFFIXES = (
     "password",
