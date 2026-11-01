@@ -20,9 +20,7 @@ def test_core_sensitive_tools_remain_denied_with_custom_skip_list(
 
     assert not should_capture_tool(tool_name, memory_profile.skip_tools)
     assert (
-        capture.capture_tool_call(
-            tool_name, {"payload": "synthetic"}, {"result": "synthetic"}
-        )
+        capture.capture_tool_call(tool_name, {"payload": "synthetic"}, {"result": "synthetic"})
         is None
     )
     assert memory_db.get_stats().total_items == 0
