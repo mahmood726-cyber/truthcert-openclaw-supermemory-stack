@@ -214,3 +214,11 @@ digests. Other projects' record changes must not alter the selected project's
 fingerprint. This does **not** authenticate the underlying source, prove that
 the memory is current, or establish a signed evidence certificate. Recheck the
 source itself before making any authoritative scientific claim.
+
+Packed recall now carries the **same** unsigned `db_hash` that was captured
+with its search results, even if the database changes before context rendering.
+The packer must not recompute a later live hash and misattribute it to stale
+items. Nonempty recalls lacking a well-formed snapshot fingerprint are refused.
+Directly packing an arbitrary item list is labelled `NOT_SNAPSHOT_BOUND` and
+has an empty `db_hash`; no source-state binding or scientific validation is
+claimed. Neither format authenticates a source or a model call.
