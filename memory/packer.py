@@ -3,6 +3,7 @@ Context packer - deterministic injection of memory into prompts.
 """
 
 import hashlib
+import re
 from collections.abc import Callable
 
 from .backend_local_sqlite import LocalSQLiteBackend
@@ -52,6 +53,8 @@ class ContextPacker:
         items: list[MemoryItem],
         max_chars: int | None = None,
         include_provenance: bool = True,
+        *,
+        snapshot_db_hash: str | None = None,
     ) -> PackedContext:
         """
         Pack memory items into a context string.
@@ -60,10 +63,17 @@ class ContextPacker:
             items: Memory items to pack
             max_chars: Maximum characters (defaults to profile setting)
             include_provenance: Include provenance header
+            snapshot_db_hash: Unsigned fingerprint from the same recall snapshot.
+                Omit for arbitrary item lists; they are not snapshot-bound.
 
         Returns:
             PackedContext with packed content
         """
+        if snapshot_db_hash is not None and not re.fullmatch(
+            r"sha256:[0-9a-f]{64}", snapshot_db_hash
+        ):
+            raise ValueError("invalid recall snapshot fingerprint")
+        db_hash = snapshot_db_hash or ""
         max_chars = max_chars or self.profile.max_inject_chars
 
         # Sort items deterministically by (type, created_at, id)
@@ -101,9 +111,11 @@ class ContextPacker:
         # Build provenance header if enabled
         header = self.MEMORY_HEADER
         if include_provenance:
-            db_hash = self.backend.compute_db_hash()
             selection_rule = f"Sorted by (type, created_at, id), limit={max_chars} chars"
-            provenance = f"\nProvenance: db_hash={db_hash}, rule='{selection_rule}'"
+            # Direct packing has no trusted recall snapshot: do not attach a
+            # freshly computed live hash to potentially stale/foreign items.
+            state = f"db_hash={db_hash}" if db_hash else "NOT_SNAPSHOT_BOUND"
+            provenance = f"\nProvenance: {state}, rule='{selection_rule}'"
             header = self.MEMORY_HEADER + provenance
 
         return PackedContext(
@@ -112,7 +124,7 @@ class ContextPacker:
             footer=self.MEMORY_FOOTER,
             total_chars=len(header) + len(content) + len(self.MEMORY_FOOTER),
             items_included=items_included,
-            db_hash=self.backend.compute_db_hash(),
+            db_hash=db_hash,
             selection_rule=f"deterministic sort, max_chars={max_chars}",
         )
 
@@ -121,10 +133,13 @@ class ContextPacker:
         recall_result: RecallResult,
         max_chars: int | None = None,
     ) -> PackedContext:
-        """Pack items from a recall result."""
+        """Keep the search-time fingerprint with the items it actually describes."""
+        if recall_result.items and not recall_result.db_hash:
+            raise ValueError("recall items lack a snapshot fingerprint")
         return self.pack(
             items=recall_result.items,
             max_chars=max_chars,
+            snapshot_db_hash=recall_result.db_hash or None,
         )
 
     def pack_for_turn(
