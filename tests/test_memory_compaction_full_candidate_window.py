@@ -19,10 +19,7 @@ def test_rolling_compaction_sees_old_records_beyond_newest_ten_thousand() -> Non
     current = MemoryItem(id="new", text="synthetic new", created_at_utc=now)
     # Model the backend's documented newest-first order without 10,002 slow
     # disk writes in every Python/Windows CI matrix member.
-    items = [
-        current.model_copy(update={"id": f"new-{index}"})
-        for index in range(10_000)
-    ]
+    items = [current.model_copy(update={"id": f"new-{index}"}) for index in range(10_000)]
     items.extend(
         [
             MemoryItem(id="old-a", text="old canary a", created_at_utc=old),
@@ -34,9 +31,7 @@ def test_rolling_compaction_sees_old_records_beyond_newest_ten_thousand() -> Non
     backend.get_stats.return_value = MemoryStats(total_items=len(items))
     backend.list_items.side_effect = lambda *, limit: items[:limit]
 
-    result = MemoryCompactor(backend).compact_rolling(
-        max_age_days=30, dry_run=True
-    )
+    result = MemoryCompactor(backend).compact_rolling(max_age_days=30, dry_run=True)
 
     assert result["items_processed"] == 2
     assert result["summaries_created"] == 0
