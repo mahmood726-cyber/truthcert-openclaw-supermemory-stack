@@ -47,6 +47,15 @@ class MemoryCompactor:
         Returns:
             Summary of compaction actions
         """
+        # Invalid bounds or truthy stand-ins must not trigger destructive writes.
+        # In Python bool is an int subclass, so use exact type checks here.
+        if type(max_age_days) is not int or max_age_days <= 0:
+            raise ValueError("max_age_days must be a positive integer")
+        if type(summary_window_days) is not int or summary_window_days <= 0:
+            raise ValueError("summary_window_days must be a positive integer")
+        if type(dry_run) is not bool:
+            raise ValueError("dry_run must be a boolean")
+
         cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
 
         # Get all items older than cutoff
@@ -138,6 +147,15 @@ class MemoryCompactor:
         Returns:
             Summary of compaction actions
         """
+        # Prevent inverted/negative targets from deleting nearly all memories.
+        # A target must leave room for the replacement summary.
+        if type(max_items) is not int or max_items <= 0:
+            raise ValueError("max_items must be a positive integer")
+        if type(target_items) is not int or not 0 < target_items < max_items:
+            raise ValueError("target_items must be a positive integer below max_items")
+        if type(dry_run) is not bool:
+            raise ValueError("dry_run must be a boolean")
+
         stats = self.backend.get_stats()
 
         if stats.total_items <= max_items:
