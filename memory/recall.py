@@ -197,6 +197,18 @@ class MemoryRecall:
 
         Returns key decisions and context for the current session.
         """
+        # An OFF profile disables *all* automatic memory injection, including
+        # /profile. Do not even query the backend: empty context is not evidence
+        # that the stored database is empty, so report its count as unknown.
+        if not self.profile.auto_recall:
+            return {
+                "recent_decisions": [],
+                "codebase_indexed": False,
+                "codebase_path": None,
+                "summaries": [],
+                "total_memories": None,
+            }
+
         # /profile is automatic injection, not an explicitly authorized
         # SECRET read. Enforce the class before pagination so newer SECRET
         # records cannot hide older usable context.
