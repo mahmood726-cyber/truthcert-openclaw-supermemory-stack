@@ -2,12 +2,80 @@
 Memory capture module - auto-capture hooks for chat and tool calls.
 """
 
+import re
 from collections.abc import Callable
 from typing import Any
 
 from .backend_local_sqlite import LocalSQLiteBackend
 from .redaction import Redactor, should_capture_tool
 from .schema import MemoryItem, MemoryProfile, MemorySource, MemoryType
+
+
+_SENSITIVE_FIELD_SUFFIXES = (
+    "password",
+    "passwd",
+    "apikey",
+    "apisecret",
+    "secretkey",
+    "clientsecret",
+    "privatekey",
+    "accesstoken",
+    "refreshtoken",
+    "authtoken",
+    "sessiontoken",
+    "authorization",
+    "credential",
+    "credentials",
+    "secretaccesskey",
+    "accountkey",
+    "token",
+    "secret",
+)
+
+
+def _sensitive_field_name(name: str) -> bool:
+    """Recognize credential field names even with case/separator variation."""
+    normalized = "".join(char for char in name.casefold() if char.isalnum())
+    return normalized == "pwd" or any(
+        normalized.endswith(suffix) for suffix in _SENSITIVE_FIELD_SUFFIXES
+    )
+
+
+def _contains_sensitive_field(value: Any) -> bool:
+    """Refuse credential-keyed structured data before formatting and truncation.
+
+    Plain text redaction does not match quoted Python/JSON dictionary keys
+    such as {'password': '...'}; do not store such tool payloads at all.
+    Check nested mappings, list results and stringified structured output.
+    A bounded traversal fails closed on pathological or cyclic objects.
+    """
+    pending = [value]
+    seen: set[int] = set()
+    inspected = 0
+    while pending:
+        inspected += 1
+        if inspected > 10_000:
+            return True
+        current = pending.pop()
+        if isinstance(current, dict):
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            for key, nested in current.items():
+                if _sensitive_field_name(str(key)):
+                    return True
+                pending.append(nested)
+        elif isinstance(current, (list, tuple)):
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            pending.extend(current)
+        elif isinstance(current, str):
+            # Handles JSON and Python repr, not just exact named token formats.
+            for key in re.findall(r"""['"]([^'"]+)['"]\\s*:""", current):
+                if _sensitive_field_name(key):
+                    return True
+    return False
 
 
 class MemoryCapture:
@@ -104,6 +172,15 @@ class MemoryCapture:
         # Check allowlist if in selected mode
         if (self.profile.capture_mode == "selected") and (
             tool_name not in self.profile.capture_tools
+        ):
+            return None
+
+        # Structured credential fields evade free-text key=value redaction,
+        # notably dict repr with quoted keys. Refuse automatic persistence.
+        if (
+            (self.profile.store_tool_inputs and _contains_sensitive_field(inputs))
+            or (self.profile.store_tool_results and _contains_sensitive_field(outputs))
+            or _contains_sensitive_field(metadata)
         ):
             return None
 
