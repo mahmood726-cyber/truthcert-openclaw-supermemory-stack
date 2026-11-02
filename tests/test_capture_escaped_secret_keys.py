@@ -9,14 +9,12 @@ from memory.capture import MemoryCapture
     "payload",
     [
         r'{"p\u0061ssword": "synthetic-only-value"}',
-        r'{\u0022password\u0022:\u0022synthetic-only-value\u0022}',
+        r"{\u0022password\u0022:\u0022synthetic-only-value\u0022}",
         r'{"headers": {"auth\u005ftoken": "synthetic-only-value"}}',
         r"{'p\x61ssword': 'synthetic-only-value'}",
     ],
 )
-def test_escaped_credential_field_never_enters_tool_memory(
-    memory_db, memory_profile, payload
-):
+def test_escaped_credential_field_never_enters_tool_memory(memory_db, memory_profile, payload):
     capture = MemoryCapture(memory_db, memory_profile)
     assert capture.capture_tool_call("synthetic_safe_tool", {}, payload) is None
     assert memory_db.get_stats().total_items == 0
