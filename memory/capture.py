@@ -32,6 +32,13 @@ _SENSITIVE_FIELD_SUFFIXES = (
 )
 
 
+# Decode only literal ASCII-style key escapes while *scanning*, not when
+# persisting. Providers may return JSON string data with a key such as
+# p\u0061ssword or escaped quotation marks; neither the quoted-key scan nor
+# ordinary free-text redaction recognizes these as credential fields.
+_KEY_ESCAPE = re.compile(r"\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2}))")
+
+
 def _sensitive_field_name(name: str) -> bool:
     """Recognize credential field names even with case/separator variation."""
     normalized = "".join(char for char in name.casefold() if char.isalnum())
@@ -70,8 +77,16 @@ def _contains_sensitive_field(value: Any) -> bool:
             seen.add(id(current))
             pending.extend(current)
         elif isinstance(current, str):
-            # Handles JSON and Python repr, not just exact named token formats.
-            for key in re.findall(r"""['"]([^'"]+)['"]\s*:""", current):
+            # Limit parsing work on arbitrary tool output. Oversize structured
+            # strings must not be truncated into apparently safe memories.
+            if len(current) > 100_000:
+                return True
+            scan_text = _KEY_ESCAPE.sub(
+                lambda match: chr(int(match.group(1) or match.group(2), 16)),
+                current,
+            )
+            # Handles JSON, Python repr, and unicode-escaped JSON field names.
+            for key in re.findall(r"""['"]([^'"]+)['"]\s*:""", scan_text):
                 if _sensitive_field_name(key):
                     return True
     return False
